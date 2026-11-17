@@ -15,7 +15,7 @@
 //! reference its parent holds, and every proof node must be used.
 
 use core::ptr::MemSpan
-use std::evm::keccak256
+use ingot::hash::keccak
 use ingot::rlp::{self, Item}
 
 /// Keccak-256 of the RLP encoding of the empty string: the root of a trie
@@ -101,7 +101,7 @@ pub fn lookup<N: Nodes>(_ buf: MemSpan, nodes: mut N, root: u256, path: u256) ->
                 }
                 Result::Err(e) => { return Result::Err(e) }
             }
-            if keccak256(buf.slice(offset: span.start, len: span.len)) != want.hash {
+            if keccak(buf.slice(offset: span.start, len: span.len)) != want.hash {
                 return Result::Err(ProofError::HashMismatch)
             }
             match rlp::item_exact(buf, at: span.start, len: span.len) {

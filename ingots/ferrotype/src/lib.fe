@@ -6,6 +6,7 @@
 //! - `state`: typed headers, accounts and storage slots.
 //! - `slots`: Solidity and Vyper storage layouts, token balance layouts.
 
+pub use hash
 pub use rlp
 pub use trie
 pub use nodes

@@ -7,7 +7,7 @@
 //! the wrong trie.
 
 use core::ptr::MemSpan
-use std::evm::{keccak256, keccak_packed, keccak_words}
+use ingot::hash::{keccak, keccak_address, keccak_words}
 use ingot::rlp::{self, Item}
 use ingot::trie::{self, Lookup, Nodes, ProofError, EMPTY_TRIE_ROOT}
 
@@ -70,7 +70,7 @@ pub fn header(_ buf: MemSpan, at: usize, len: usize) -> Option<Header> {
             timestamp = item.as_word(buf)?
         }
     }
-    let hash = keccak256(buf.slice(offset: at, len))
+    let hash = keccak(buf.slice(offset: at, len))
     Option::Some(Header {
         hash: BlockHash { value: hash },
         state_root: StateRoot { value: state_root },
@@ -105,7 +105,7 @@ impl Account {
 
 /// The trie path of an account: Keccak-256 of its 20-byte address.
 pub fn account_path(_ address: Address) -> u256 {
-    keccak_packed(address)
+    keccak_address(address)
 }
 
 /// The trie path of a storage slot: Keccak-256 of the 32-byte slot.

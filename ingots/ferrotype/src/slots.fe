@@ -4,7 +4,7 @@
 //! variable into that slot, and the slot's word back into the variable, is
 //! the other half of reading another contract's state.
 
-use std::evm::keccak_words
+use ingot::hash::keccak_words
 
 /// Solidity `mapping(K => V)` declared at slot `slot`: the entry for `key`
 /// lives at `keccak256(key . slot)`.

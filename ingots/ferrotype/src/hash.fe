@@ -1,0 +1,60 @@
+//! Keccak-256, the one thing that differs between targets.
+//!
+//! On the EVM the `KECCAK256` instruction does the work. Native executables
+//! and WebAssembly modules have no such instruction and run `core::hash`'s
+//! software Keccak instead. Everything else in Ferrotype is the same code on
+//! every target.
+
+use core::ptr::MemSpan
+
+/// Keccak-256 of `data`.
+#[cfg(target = "evm")]
+pub fn keccak(_ data: MemSpan) -> u256 {
+    std::evm::keccak256(data)
+}
+
+/// Keccak-256 of the 32-byte words `words`, concatenated.
+#[cfg(target = "evm")]
+pub fn keccak_words<const N: usize>(_ words: [u256; N]) -> u256 {
+    std::evm::keccak_words(words)
+}
+
+/// Keccak-256 of an address's 20 bytes.
+#[cfg(target = "evm")]
+pub fn keccak_address(_ address: Address) -> u256 {
+    std::evm::keccak_packed(address)
+}
+
+#[cfg(target = "native")]
+pub fn keccak(_ data: MemSpan) -> u256 {
+    core::hash::keccak256_word(data)
+}
+
+#[cfg(target = "native")]
+pub fn keccak_words<const N: usize>(_ words: [u256; N]) -> u256 {
+    core::hash::keccak_words(words)
+}
+
+#[cfg(target = "native")]
+pub fn keccak_address(_ address: Address) -> u256 {
+    var state = core::hash::Keccak256::new()
+    state.update_word(address.word(), len: 20)
+    state.finish_word()
+}
+
+#[cfg(target = "wasm")]
+pub fn keccak(_ data: MemSpan) -> u256 {
+    core::hash::keccak256_word(data)
+}
+
+#[cfg(target = "wasm")]
+pub fn keccak_words<const N: usize>(_ words: [u256; N]) -> u256 {
+    core::hash::keccak_words(words)
+}
+
+#[cfg(target = "wasm")]
+pub fn keccak_address(_ address: Address) -> u256 {
+    var state = core::hash::Keccak256::new()
+    state.update_word(address.word(), len: 20)
+    state.finish_word()
+}
