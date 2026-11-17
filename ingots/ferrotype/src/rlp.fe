@@ -58,6 +58,10 @@ pub fn item_at(_ buf: MemSpan, at: usize, limit: usize) -> Option<Item> {
         if short > limit - payload {
             return Option::None
         }
+        // A single byte below 0x80 is its own encoding, never 0x81 b.
+        if !list && short == 1 && buf.byte_at(payload) < 0x80 {
+            return Option::None
+        }
         return Option::Some(Item { start: at, payload, len: short, list })
     }
     // Long form: the next `short - 55` bytes hold the payload length.
@@ -65,7 +69,15 @@ pub fn item_at(_ buf: MemSpan, at: usize, limit: usize) -> Option<Item> {
     if len_len > 8 || len_len >= limit - at {
         return Option::None
     }
+    // Canonical long form: no leading zero length byte, and only for
+    // payloads that the short form cannot hold.
+    if buf.byte_at(at + 1) == 0 {
+        return Option::None
+    }
     let len: usize = read_be(buf, at: at + 1, len: len_len).downcast_truncate()
+    if len < 56 {
+        return Option::None
+    }
     let payload = at + 1 + len_len
     if len > limit - payload {
         return Option::None

@@ -1,0 +1,20 @@
+{
+  "name": "ferrotype-vectors",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Deterministic Merkle-Patricia (secure trie) proof vectors for Ferrotype, generated with @ethereumjs/trie",
+  "type": "module",
+  "scripts": {
+    "gen": "node gen.mjs",
+    "verify": "node ref_verify.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@ethereumjs/rlp": "5.0.2",
+    "@ethereumjs/trie": "6.2.1",
+    "@ethereumjs/util": "9.1.0",
+    "ethereum-cryptography": "2.2.1"
+  }
+}
