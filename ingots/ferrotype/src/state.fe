@@ -1,0 +1,176 @@
+//! Typed Ethereum state: block headers, accounts and storage slots.
+//!
+//! Every root and hash has its own type. A storage root cannot be passed where
+//! a state root is expected, a block hash cannot stand in for either, and a
+//! header's state root is only reachable after its hash has been computed.
+//! Mixing them up is a compile error rather than a proof that silently checks
+//! the wrong trie.
+
+use core::ptr::MemSpan
+use std::evm::{keccak256, keccak_packed, keccak_words}
+use ingot::rlp::{self, Item}
+use ingot::trie::{self, Lookup, Nodes, ProofError, EMPTY_TRIE_ROOT}
+
+/// Keccak-256 of the empty byte string: the code hash of an account with no code.
+pub const EMPTY_CODE_HASH: u256 = 0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470
+
+/// The hash of a block header, as `BLOCKHASH` and the history contract return it.
+pub struct BlockHash { pub value: u256 }
+
+/// The root of the state trie, read from a block header.
+pub struct StateRoot { pub value: u256 }
+
+/// The root of one account's storage trie, read from a proven account.
+pub struct StorageRoot { pub value: u256 }
+
+/// The hash of an account's code, read from a proven account.
+pub struct CodeHash { pub value: u256 }
+
+impl Copy for BlockHash {}
+impl Copy for StateRoot {}
+impl Copy for StorageRoot {}
+impl Copy for CodeHash {}
+
+/// The fields of a block header a state proof needs.
+pub struct Header {
+    /// Keccak-256 of the header's RLP encoding.
+    pub hash: BlockHash,
+    pub state_root: StateRoot,
+    pub number: u256,
+    pub timestamp: u256,
+}
+
+impl Copy for Header {}
+
+/// Decodes the RLP block header in `buf[at..at + len]`. Every fork's header
+/// starts with the same fifteen fields; later forks append fields after
+/// them, so one decoder reads them all.
+pub fn header(_ buf: MemSpan, at: usize, len: usize) -> Option<Header> {
+    let list = rlp::item_exact(buf, at, len)?
+    if !list.list {
+        return Option::None
+    }
+    // 0 parent, 1 ommers, 2 beneficiary, 3 state root, ..., 8 number, ..., 11 timestamp.
+    var item = rlp::first_in(buf, list)?
+    var index: usize = 0
+    var state_root: u256 = 0
+    var number: u256 = 0
+    var timestamp: u256 = 0
+    while index < 14 {
+        item = rlp::next_in(buf, list, prev: item)?
+        index += 1
+        if index == 3 {
+            if item.list || item.len != 32 {
+                return Option::None
+            }
+            state_root = item.as_word(buf)?
+        } else if index == 8 {
+            number = item.as_word(buf)?
+        } else if index == 11 {
+            timestamp = item.as_word(buf)?
+        }
+    }
+    let hash = keccak256(buf.slice(offset: at, len))
+    Option::Some(Header {
+        hash: BlockHash { value: hash },
+        state_root: StateRoot { value: state_root },
+        number,
+        timestamp,
+    })
+}
+
+/// An account as the state trie holds it. An account that does not exist
+/// reads as the empty account: nonce 0, balance 0, no storage, no code.
+pub struct Account {
+    pub exists: bool,
+    pub nonce: u256,
+    pub balance: u256,
+    pub storage_root: StorageRoot,
+    pub code_hash: CodeHash,
+}
+
+impl Copy for Account {}
+
+impl Account {
+    pub fn empty() -> Self {
+        Account {
+            exists: false,
+            nonce: 0,
+            balance: 0,
+            storage_root: StorageRoot { value: EMPTY_TRIE_ROOT },
+            code_hash: CodeHash { value: EMPTY_CODE_HASH },
+        }
+    }
+}
+
+/// The trie path of an account: Keccak-256 of its 20-byte address.
+pub fn account_path(_ address: Address) -> u256 {
+    keccak_packed(address)
+}
+
+/// The trie path of a storage slot: Keccak-256 of the 32-byte slot.
+pub fn slot_path(_ slot: u256) -> u256 {
+    keccak_words([slot])
+}
+
+/// Proves `address`'s account against `root` with the state proof `nodes`.
+pub fn account<N: Nodes>(_ buf: MemSpan, nodes: mut N, root: StateRoot, address: Address) -> Result<ProofError, Account> {
+    match trie::lookup(buf, nodes: mut nodes, root: root.value, path: account_path(address)) {
+        Result::Ok(Lookup::Absent) => Result::Ok(Account::empty())
+        Result::Ok(Lookup::Found(value)) => decode_account(buf, value)
+        Result::Err(e) => Result::Err(e)
+    }
+}
+
+/// Proves the value of `slot` against the storage root `root` with the
+/// storage proof `nodes`. An absent slot holds zero.
+pub fn storage<N: Nodes>(_ buf: MemSpan, nodes: mut N, root: StorageRoot, slot: u256) -> Result<ProofError, u256> {
+    match trie::lookup(buf, nodes: mut nodes, root: root.value, path: slot_path(slot)) {
+        Result::Ok(Lookup::Absent) => Result::Ok(0)
+        Result::Ok(Lookup::Found(value)) => decode_slot(buf, value)
+        Result::Err(e) => Result::Err(e)
+    }
+}
+
+// The leaf holds the RLP list [nonce, balance, storageRoot, codeHash].
+fn decode_account(_ buf: MemSpan, _ value: Item) -> Result<ProofError, Account> {
+    let list = match rlp::item_exact(buf, at: value.payload, len: value.len) {
+        Option::Some(item) => item
+        Option::None => { return Result::Err(ProofError::Malformed) }
+    }
+    if !list.list {
+        return Result::Err(ProofError::Malformed)
+    }
+    match read_account(buf, list) {
+        Option::Some(account) => Result::Ok(account)
+        Option::None => Result::Err(ProofError::Malformed)
+    }
+}
+
+fn read_account(_ buf: MemSpan, _ list: Item) -> Option<Account> {
+    let nonce = rlp::first_in(buf, list)?
+    let balance = rlp::next_in(buf, list, prev: nonce)?
+    let storage_root = rlp::next_in(buf, list, prev: balance)?
+    let code_hash = rlp::next_in(buf, list, prev: storage_root)?
+    if code_hash.end() != list.end() || storage_root.len != 32 || code_hash.len != 32 {
+        return Option::None
+    }
+    Option::Some(Account {
+        exists: true,
+        nonce: nonce.as_word(buf)?,
+        balance: balance.as_word(buf)?,
+        storage_root: StorageRoot { value: storage_root.as_word(buf)? },
+        code_hash: CodeHash { value: code_hash.as_word(buf)? },
+    })
+}
+
+// The leaf holds rlp(value) with leading zero bytes stripped.
+fn decode_slot(_ buf: MemSpan, _ value: Item) -> Result<ProofError, u256> {
+    match rlp::item_exact(buf, at: value.payload, len: value.len) {
+        Option::Some(item) => match item.as_word(buf) {
+            Option::Some(word) => Result::Ok(word)
+            Option::None => Result::Err(ProofError::Malformed)
+        }
+        Option::None => Result::Err(ProofError::Malformed)
+    }
+}

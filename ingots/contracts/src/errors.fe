@@ -1,0 +1,23 @@
+use ferrotype::trie::ProofError
+
+/// A proof was rejected; `reason` says why (see `reason_code`).
+#[error]
+pub struct InvalidProof {
+    pub reason: u8,
+}
+
+/// The ABI code of each rejection reason.
+pub fn reason_code(_ e: ProofError) -> u8 {
+    match e {
+        ProofError::Malformed => 1
+        ProofError::HashMismatch => 2
+        ProofError::MissingNode => 3
+        ProofError::ExtraNodes => 4
+        ProofError::BadReference => 5
+    }
+}
+
+/// Reverts with `InvalidProof` for `e`.
+pub fn reject(_ e: ProofError) -> ! {
+    std::evm::revert(InvalidProof { reason: reason_code(e) })
+}
