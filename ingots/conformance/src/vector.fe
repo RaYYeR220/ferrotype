@@ -1,0 +1,40 @@
+//! Checks one generated proof vector against its expected verdict.
+
+use core::text::decode_hex
+use std::abi::DynString
+use ferrotype::nodes::Packed
+use ferrotype::rlp
+use ferrotype::state
+use ferrotype::trie::{self, Lookup, ProofError}
+
+/// `expect` is 0 for a present key holding `word`, 100 for an absent key, or
+/// the code of the error the proof must be rejected with.
+pub fn check(root: u256, key: u256, path: u256, proof: DynString, expect: u8, word: u256) {
+    // The path is the key's Keccak-256 hash on every target.
+    assert!(state::slot_path(key) == path)
+    let buf = decode_hex(proof).unwrap()
+    var nodes = Packed::new(start: 0, len: buf.len())
+    match trie::lookup(buf.span(), nodes: mut nodes, root, path) {
+        Result::Ok(Lookup::Found(item)) => {
+            assert!(expect == 0)
+            let value = rlp::item_exact(buf.span(), at: item.payload, len: item.len).unwrap()
+            assert!(value.as_word(buf.span()).unwrap() == word)
+        }
+        Result::Ok(Lookup::Absent) => {
+            assert!(expect == 100)
+        }
+        Result::Err(e) => {
+            assert!(code(e) == expect)
+        }
+    }
+}
+
+fn code(_ e: ProofError) -> u8 {
+    match e {
+        ProofError::Malformed => 1
+        ProofError::HashMismatch => 2
+        ProofError::MissingNode => 3
+        ProofError::ExtraNodes => 4
+        ProofError::BadReference => 5
+    }
+}

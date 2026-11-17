@@ -6,3 +6,8 @@ pub use mainnet_absent_account
 pub use mainnet_eoa_empty_storage
 pub use tests
 pub use contract_tests
+pub use vector
+pub use vectors_inclusion
+pub use vectors_inline
+pub use vectors_exclusion
+pub use vectors_invalid
