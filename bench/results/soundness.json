@@ -1,0 +1,144 @@
+{
+  "results": [
+    {
+      "case": "usdc-holder",
+      "implementation": "optimism",
+      "mutation": "wrong-state-root",
+      "note": "MerkleTrie: invalid root hash",
+      "outcome": "rejected"
+    },
+    {
+      "case": "usdc-holder",
+      "implementation": "lido",
+      "mutation": "wrong-state-root",
+      "note": "revert()",
+      "outcome": "rejected"
+    },
+    {
+      "case": "usdc-holder",
+      "implementation": "lido-0.8",
+      "mutation": "wrong-state-root",
+      "note": "revert()",
+      "outcome": "rejected"
+    },
+    {
+      "case": "usdc-holder",
+      "implementation": "ferrotype",
+      "mutation": "wrong-state-root",
+      "note": "InvalidProof(2) HashMismatch (no selector)",
+      "outcome": "rejected"
+    },
+    {
+      "case": "usdc-holder",
+      "implementation": "ferrotype-packed",
+      "mutation": "wrong-state-root",
+      "note": "InvalidProof(2) HashMismatch (no selector)",
+      "outcome": "rejected"
+    },
+    {
+      "case": "usdc-holder",
+      "implementation": "optimism",
+      "mutation": "tampered-storage-leaf",
+      "note": "MerkleTrie: invalid large internal hash",
+      "outcome": "rejected"
+    },
+    {
+      "case": "usdc-holder",
+      "implementation": "lido",
+      "mutation": "tampered-storage-leaf",
+      "note": "revert()",
+      "outcome": "rejected"
+    },
+    {
+      "case": "usdc-holder",
+      "implementation": "lido-0.8",
+      "mutation": "tampered-storage-leaf",
+      "note": "revert()",
+      "outcome": "rejected"
+    },
+    {
+      "case": "usdc-holder",
+      "implementation": "ferrotype",
+      "mutation": "tampered-storage-leaf",
+      "note": "InvalidProof(2) HashMismatch (no selector)",
+      "outcome": "rejected"
+    },
+    {
+      "case": "usdc-holder",
+      "implementation": "ferrotype-packed",
+      "mutation": "tampered-storage-leaf",
+      "note": "InvalidProof(2) HashMismatch (no selector)",
+      "outcome": "rejected"
+    },
+    {
+      "case": "usdc-holder",
+      "implementation": "optimism",
+      "mutation": "truncated-storage-proof",
+      "note": "MerkleTrie: ran out of proof elements",
+      "outcome": "rejected"
+    },
+    {
+      "case": "usdc-holder",
+      "implementation": "lido",
+      "mutation": "truncated-storage-proof",
+      "outcome": "accepted",
+      "value": "0x0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "case": "usdc-holder",
+      "implementation": "lido-0.8",
+      "mutation": "truncated-storage-proof",
+      "outcome": "accepted",
+      "value": "0x0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "case": "usdc-holder",
+      "implementation": "ferrotype",
+      "mutation": "truncated-storage-proof",
+      "note": "InvalidProof(3) MissingNode (no selector)",
+      "outcome": "rejected"
+    },
+    {
+      "case": "usdc-holder",
+      "implementation": "ferrotype-packed",
+      "mutation": "truncated-storage-proof",
+      "note": "InvalidProof(3) MissingNode (no selector)",
+      "outcome": "rejected"
+    },
+    {
+      "case": "usdc-holder",
+      "implementation": "optimism",
+      "mutation": "truncated-account-proof",
+      "note": "MerkleTrie: ran out of proof elements",
+      "outcome": "rejected"
+    },
+    {
+      "case": "usdc-holder",
+      "implementation": "lido",
+      "mutation": "truncated-account-proof",
+      "outcome": "accepted",
+      "value": "0x0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "case": "usdc-holder",
+      "implementation": "lido-0.8",
+      "mutation": "truncated-account-proof",
+      "outcome": "accepted",
+      "value": "0x0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "case": "usdc-holder",
+      "implementation": "ferrotype",
+      "mutation": "truncated-account-proof",
+      "note": "InvalidProof(3) MissingNode (no selector)",
+      "outcome": "rejected"
+    },
+    {
+      "case": "usdc-holder",
+      "implementation": "ferrotype-packed",
+      "mutation": "truncated-account-proof",
+      "note": "InvalidProof(3) MissingNode (no selector)",
+      "outcome": "rejected"
+    }
+  ]
+}
