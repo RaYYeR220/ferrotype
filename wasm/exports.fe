@@ -1,0 +1,161 @@
+//! The WebAssembly face of Ferrotype: the same verifier the contracts and the
+//! CLI run, called from JavaScript.
+//!
+//! Every argument is hex text the host places in the module's memory. A reply
+//! that succeeds carries the address of a record of 32-byte big-endian words
+//! in the module's memory, which the host reads before releasing the arena.
+//! A reply that fails carries an error number: 1 to 5 when the proof was
+//! rejected (Malformed, HashMismatch, MissingNode, ExtraNodes, BadReference),
+//! 20 when an argument is not valid hex, 21 when the header is not a block
+//! header.
+
+use core::ptr::MemBuffer
+use core::text::decode_hex
+use std::abi::Bytes
+use std::wasm::{HostText, Reply}
+use ingot::nodes::Packed
+use ingot::rlp
+use ingot::slots::BalanceLayout
+use ingot::state::{self, StateRoot}
+use ingot::trie::{self, Lookup, ProofError}
+
+const BAD_HEX: u32 = 20
+const BAD_HEADER: u32 = 21
+
+/// Proves `slot` of `account` under `state_root`. The record is five words:
+/// the slot's value, the account's storage root, balance and nonce, and 1 if
+/// the account exists.
+pub fn read_storage(state_root: HostText, account: HostText, slot: HostText, account_proof: HostText, storage_proof: HostText) -> Reply {
+    let root = match word(state_root) {
+        Option::Some(w) => w
+        Option::None => { return Reply::error(BAD_HEX) }
+    }
+    let who = match word(account) {
+        Option::Some(w) => Address::new(w)
+        Option::None => { return Reply::error(BAD_HEX) }
+    }
+    let key = match word(slot) {
+        Option::Some(w) => w
+        Option::None => { return Reply::error(BAD_HEX) }
+    }
+    let a = match bytes(account_proof) {
+        Option::Some(b) => b
+        Option::None => { return Reply::error(BAD_HEX) }
+    }
+    let s = match bytes(storage_proof) {
+        Option::Some(b) => b
+        Option::None => { return Reply::error(BAD_HEX) }
+    }
+    var account_nodes = Packed::new(start: 0, len: a.len())
+    let proven = match state::account(a.span(), nodes: mut account_nodes, root: StateRoot { value: root }, address: who) {
+        Result::Ok(found) => found
+        Result::Err(e) => { return Reply::error(code(e)) }
+    }
+    var slot_nodes = Packed::new(start: 0, len: s.len())
+    let value = match state::storage(s.span(), nodes: mut slot_nodes, root: proven.storage_root, slot: key) {
+        Result::Ok(v) => v
+        Result::Err(e) => { return Reply::error(code(e)) }
+    }
+    let exists: u256 = if proven.exists { 1 } else { 0 }
+    record([value, proven.storage_root.value, proven.balance, proven.nonce, exists])
+}
+
+/// Decodes a block header. The record is four words: the header's hash, its
+/// state root, number and timestamp.
+pub fn read_header(header: HostText) -> Reply {
+    let h = match bytes(header) {
+        Option::Some(b) => b
+        Option::None => { return Reply::error(BAD_HEX) }
+    }
+    match state::header(h.span(), at: 0, len: h.len()) {
+        Option::Some(head) => record([head.hash.value, head.state_root.value, head.number, head.timestamp])
+        Option::None => Reply::error(BAD_HEADER)
+    }
+}
+
+/// Looks `path` up in the trie `root` with the packed proof `proof`. The
+/// record is two words: 0 and the value (as an integer) for a present key,
+/// or 100 and 0 for an absent one.
+pub fn lookup(root: HostText, path: HostText, proof: HostText) -> Reply {
+    let r = match word(root) {
+        Option::Some(w) => w
+        Option::None => { return Reply::error(BAD_HEX) }
+    }
+    let p = match word(path) {
+        Option::Some(w) => w
+        Option::None => { return Reply::error(BAD_HEX) }
+    }
+    let buf = match bytes(proof) {
+        Option::Some(b) => b
+        Option::None => { return Reply::error(BAD_HEX) }
+    }
+    var nodes = Packed::new(start: 0, len: buf.len())
+    match trie::lookup(buf.span(), nodes: mut nodes, root: r, path: p) {
+        Result::Ok(Lookup::Found(item)) => {
+            match rlp::item_exact(buf.span(), at: item.payload, len: item.len) {
+                Option::Some(value) => match value.as_word(buf.span()) {
+                    Option::Some(v) => record([0, v])
+                    Option::None => Reply::error(code(ProofError::Malformed))
+                }
+                Option::None => Reply::error(code(ProofError::Malformed))
+            }
+        }
+        Result::Ok(Lookup::Absent) => record([100, 0])
+        Result::Err(e) => Reply::error(code(e))
+    }
+}
+
+/// The storage slot of a token balance: layout 0 is a Solidity mapping, 1 a
+/// Vyper mapping, 2 a Solidity mapping with a flag bit (USDC). The record is
+/// one word.
+pub fn balance_slot(layout: u32, base: HostText, holder: HostText) -> Reply {
+    let b = match word(base) {
+        Option::Some(w) => w
+        Option::None => { return Reply::error(BAD_HEX) }
+    }
+    let h = match word(holder) {
+        Option::Some(w) => Address::new(w)
+        Option::None => { return Reply::error(BAD_HEX) }
+    }
+    let kind: u8 = layout.downcast_truncate()
+    match BalanceLayout::from_parts(kind, slot: b) {
+        Option::Some(l) => record([l.slot(h)])
+        Option::None => Reply::error(BAD_HEX)
+    }
+}
+
+fn bytes(_ text: HostText) -> Option<Bytes> {
+    decode_hex(text.copy())
+}
+
+// A hex quantity of at most 32 bytes as a word.
+fn word(_ text: HostText) -> Option<u256> {
+    let b = bytes(text)?
+    if b.len() > 32 {
+        return Option::None
+    }
+    Option::Some(rlp::read_be(b.span(), at: 0, len: b.len()))
+}
+
+// Writes the words to a buffer the host reads; the host frees it with the arena.
+fn record<const N: usize>(_ words: [u256; N]) -> Reply {
+    var out = MemBuffer::new(N * 32)
+    var i: usize = 0
+    while i < N {
+        out.span().write_word(offset: i * 32, value: words[i])
+        i += 1
+    }
+    let addr: u32 = (out.ptr() as usize).downcast().unwrap()
+    core::mem::forget(out)
+    Reply::ok(addr)
+}
+
+fn code(_ e: ProofError) -> u32 {
+    match e {
+        ProofError::Malformed => 1
+        ProofError::HashMismatch => 2
+        ProofError::MissingNode => 3
+        ProofError::ExtraNodes => 4
+        ProofError::BadReference => 5
+    }
+}
