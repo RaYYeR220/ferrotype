@@ -1,0 +1,97 @@
+//! Proof node containers.
+//!
+//! The verifier reads every node in place from one buffer. These cursors find
+//! the nodes in the two layouts a proof arrives in:
+//!
+//! - `Packed`: nodes laid end to end. Every node is a complete RLP item and
+//!   so delimits itself; the container needs no lengths or offsets. This is
+//!   the compact calldata format.
+//! - `AbiList`: a Solidity `bytes[]`, as `eth_getProof` clients and the
+//!   existing Solidity verifiers pass proofs. The cursor walks the ABI
+//!   encoding in place: the length word, one offset per element, then each
+//!   element's length and bytes.
+
+use core::ptr::MemSpan
+use ingot::rlp
+use ingot::trie::{Nodes, ProofError, Span}
+
+/// Nodes laid end to end in `buf[at..end]`.
+pub struct Packed {
+    at: usize,
+    end: usize,
+}
+
+impl Packed {
+    /// The nodes in `buf[start..start + len]`.
+    pub fn new(start: usize, len: usize) -> Self {
+        Packed { at: start, end: start + len }
+    }
+}
+
+impl Nodes for Packed {
+    fn next_node(mut self, _ buf: MemSpan) -> Result<ProofError, Option<Span>> {
+        if self.at == self.end {
+            return Result::Ok(Option::None)
+        }
+        match rlp::item_at(buf, at: self.at, limit: self.end) {
+            Option::Some(item) => {
+                self.at = item.end()
+                Result::Ok(Option::Some(Span { start: item.start, len: item.encoded_len() }))
+            }
+            Option::None => Result::Err(ProofError::Malformed)
+        }
+    }
+}
+
+/// The elements of an ABI-encoded `bytes[]` whose encoding (length word
+/// first) starts at `base` in the buffer.
+pub struct AbiList {
+    base: usize,
+    index: usize,
+    count: usize,
+}
+
+impl AbiList {
+    /// Reads the element count; `None` if `buf` cannot hold it.
+    pub fn new(_ buf: MemSpan, base: usize) -> Option<Self> {
+        if base > buf.len() || buf.len() - base < 32 {
+            return Option::None
+        }
+        let count = buf.read_word(base)
+        if count > ((buf.len() - base) / 32) as u256 {
+            return Option::None
+        }
+        Option::Some(AbiList { base, index: 0, count: count.downcast_truncate() })
+    }
+
+    /// Number of nodes in the list.
+    pub fn len(self) -> usize {
+        self.count
+    }
+}
+
+impl Nodes for AbiList {
+    fn next_node(mut self, _ buf: MemSpan) -> Result<ProofError, Option<Span>> {
+        if self.index == self.count {
+            return Result::Ok(Option::None)
+        }
+        // Offsets count from the first head word, right after the length.
+        let heads = self.base + 32
+        let size = buf.len()
+        let offset = buf.read_word(heads + self.index * 32)
+        if offset > (size - heads) as u256 {
+            return Result::Err(ProofError::Malformed)
+        }
+        let element = heads + offset.downcast_truncate()
+        if size - element < 32 {
+            return Result::Err(ProofError::Malformed)
+        }
+        let len = buf.read_word(element)
+        let start = element + 32
+        if len > (size - start) as u256 {
+            return Result::Err(ProofError::Malformed)
+        }
+        self.index += 1
+        Result::Ok(Option::Some(Span { start, len: len.downcast_truncate() }))
+    }
+}

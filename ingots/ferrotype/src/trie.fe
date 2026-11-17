@@ -1,0 +1,211 @@
+//! Merkle-Patricia proof verification for Ethereum's secure tries (the state
+//! trie and every account's storage trie), where every key is a 32-byte
+//! Keccak-256 hash and so every path is 64 nibbles long.
+//!
+//! A proof is the list of nodes on the path from the root to the key, as
+//! `eth_getProof` returns it. All nodes live in one buffer and are read in
+//! place. A node whose encoding is shorter than 32 bytes is embedded in its
+//! parent instead of being hashed, and is read from the parent's bytes
+//! without consuming a proof node.
+//!
+//! The result is either the value stored under the key (`Lookup::Found`, an
+//! RLP item inside the buffer) or a proof that the key is absent
+//! (`Lookup::Absent`): the path ends in an empty branch slot, or in a leaf or
+//! extension whose path diverges from the key. Every node must hash to the
+//! reference its parent holds, and every proof node must be used.
+
+use core::ptr::MemSpan
+use std::evm::keccak256
+use ingot::rlp::{self, Item}
+
+/// Keccak-256 of the RLP encoding of the empty string: the root of a trie
+/// with no keys.
+pub const EMPTY_TRIE_ROOT: u256 = 0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
+
+/// Why a proof was rejected.
+pub enum ProofError {
+    /// An RLP item or a node does not have a valid shape.
+    Malformed,
+    /// A node does not hash to the reference its parent holds.
+    HashMismatch,
+    /// The proof ended before the path did.
+    MissingNode,
+    /// Nodes were left over after the lookup ended.
+    ExtraNodes,
+    /// A child reference is neither a 32-byte hash nor an embedded node
+    /// shorter than 32 bytes.
+    BadReference,
+}
+
+impl Copy for ProofError {}
+
+/// What a valid proof says about a key.
+pub enum Lookup {
+    /// The key is present; the item is its value, a byte string.
+    Found(Item),
+    /// The key is not in the trie.
+    Absent,
+}
+
+impl Copy for Lookup {}
+
+/// A range of the proof buffer holding one proof node.
+pub struct Span {
+    pub start: usize,
+    pub len: usize,
+}
+
+impl Copy for Span {}
+
+/// Yields the proof nodes, root first, as ranges of the proof buffer.
+pub trait Nodes {
+    /// The next node, `Ok(None)` once all nodes are used, or an error if the
+    /// container itself is malformed.
+    fn next_node(mut self, _ buf: MemSpan) -> Result<ProofError, Option<Span>>
+}
+
+/// Where the next node comes from.
+struct Want {
+    /// `true`: the node is embedded in the buffer at `at`, `len` bytes.
+    /// `false`: the next proof node must hash to `hash`.
+    inline: bool,
+    hash: u256,
+    at: usize,
+    len: usize,
+}
+
+impl Copy for Want {}
+
+/// Looks `path` (the Keccak-256 hash of the key) up in the trie with root
+/// `root`, using the proof nodes `nodes` read from `buf`.
+pub fn lookup<N: Nodes>(_ buf: MemSpan, nodes: mut N, root: u256, path: u256) -> Result<ProofError, Lookup> {
+    var want = Want { inline: false, hash: root, at: 0, len: 0 }
+    var depth: usize = 0
+    loop {
+        // Load the node the previous step points to.
+        var node: Item = Item { start: 0, payload: 0, len: 0, list: false }
+        if want.inline {
+            match rlp::item_exact(buf, at: want.at, len: want.len) {
+                Option::Some(item) => { node = item }
+                Option::None => { return Result::Err(ProofError::Malformed) }
+            }
+        } else {
+            let span = match nodes.next_node(buf) {
+                Result::Ok(Option::Some(span)) => span
+                Result::Ok(Option::None) => {
+                    // An empty trie is proven by its root alone.
+                    if depth == 0 && want.hash == EMPTY_TRIE_ROOT {
+                        return Result::Ok(Lookup::Absent)
+                    }
+                    return Result::Err(ProofError::MissingNode)
+                }
+                Result::Err(e) => { return Result::Err(e) }
+            }
+            if keccak256(buf.slice(offset: span.start, len: span.len)) != want.hash {
+                return Result::Err(ProofError::HashMismatch)
+            }
+            match rlp::item_exact(buf, at: span.start, len: span.len) {
+                Option::Some(item) => { node = item }
+                Option::None => { return Result::Err(ProofError::Malformed) }
+            }
+        }
+        if !node.list {
+            return Result::Err(ProofError::Malformed)
+        }
+
+        let first = match rlp::first_in(buf, node) {
+            Option::Some(item) => item
+            Option::None => { return Result::Err(ProofError::Malformed) }
+        }
+        let second = match rlp::next_in(buf, list: node, prev: first) {
+            Option::Some(item) => item
+            Option::None => { return Result::Err(ProofError::Malformed) }
+        }
+
+        var child = second
+        if second.end() == node.end() {
+            // Two items: a leaf or an extension, with a hex-prefix path.
+            if first.list || first.len == 0 || first.len > 33 {
+                return Result::Err(ProofError::Malformed)
+            }
+            let flag = buf.byte_at(first.payload) >> 4
+            if flag > 3 {
+                return Result::Err(ProofError::Malformed)
+            }
+            let leaf = flag >= 2
+            let odd = (flag & 1) == 1
+            // An even path pads the flag byte with a zero nibble.
+            if !odd && (buf.byte_at(first.payload) & 0x0f) != 0 {
+                return Result::Err(ProofError::Malformed)
+            }
+            let n: usize = (first.len - 1) * 2 + (if odd { 1 } else { 0 })
+            if n > 64 - depth || (leaf && n != 64 - depth) || (!leaf && (n == 0 || n == 64 - depth)) {
+                return Result::Err(ProofError::Malformed)
+            }
+            if n > 0 {
+                let node_path: u256 = if odd {
+                    rlp::read_be(buf, at: first.payload, len: first.len) & low_bits(n * 4)
+                } else {
+                    rlp::read_be(buf, at: first.payload + 1, len: first.len - 1)
+                }
+                let key_part = (path >> ((64 - depth - n) * 4) as u256) & low_bits(n * 4)
+                if node_path != key_part {
+                    return finish(buf, nodes: mut nodes, result: Lookup::Absent)
+                }
+            }
+            depth += n
+            if leaf {
+                if second.list {
+                    return Result::Err(ProofError::Malformed)
+                }
+                return finish(buf, nodes: mut nodes, result: Lookup::Found(second))
+            }
+        } else {
+            // Otherwise a branch: sixteen children and a value slot. Keys in a
+            // secure trie all have the same length, so the value slot is
+            // never on the path.
+            match rlp::count(buf, node) {
+                Option::Some(17) => {}
+                _ => { return Result::Err(ProofError::Malformed) }
+            }
+            let nibble: usize = ((path >> ((63 - depth) * 4) as u256) & 0x0f).downcast_truncate()
+            child = match rlp::nth(buf, list: node, index: nibble) {
+                Option::Some(item) => item
+                Option::None => { return Result::Err(ProofError::Malformed) }
+            }
+            depth += 1
+            if !child.list && child.len == 0 {
+                return finish(buf, nodes: mut nodes, result: Lookup::Absent)
+            }
+        }
+
+        // Follow the child reference.
+        if child.list {
+            if child.encoded_len() >= 32 {
+                return Result::Err(ProofError::BadReference)
+            }
+            want = Want { inline: true, hash: 0, at: child.start, len: child.encoded_len() }
+        } else if child.len == 32 {
+            want = Want { inline: false, hash: rlp::read_be(buf, at: child.payload, len: 32), at: 0, len: 0 }
+        } else {
+            return Result::Err(ProofError::BadReference)
+        }
+    }
+}
+
+// Accepts `result` only if no proof node is left unused.
+fn finish<N: Nodes>(_ buf: MemSpan, nodes: mut N, result: Lookup) -> Result<ProofError, Lookup> {
+    match nodes.next_node(buf) {
+        Result::Ok(Option::None) => Result::Ok(result)
+        Result::Ok(Option::Some(_)) => Result::Err(ProofError::ExtraNodes)
+        Result::Err(e) => Result::Err(e)
+    }
+}
+
+// The low `bits` bits set; `bits` is at most 256.
+fn low_bits(_ bits: usize) -> u256 {
+    if bits >= 256 {
+        return 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+    }
+    ((1 as u256) << bits as u256) - 1
+}

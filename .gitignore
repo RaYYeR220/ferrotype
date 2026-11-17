@@ -1,0 +1,17 @@
+# build output
+out/
+target/
+node_modules/
+dist/
+*.o
+*.a
+
+# local env and secrets
+.env
+.env.*
+!.env.example
+
+# editor
+.vscode/
+.idea/
+.DS_Store

@@ -1,0 +1,139 @@
+//! Allocation-free RLP reading over a byte buffer.
+//!
+//! Every item is a range of the buffer it was read from, so reading a proof
+//! never copies a node or allocates an item list. Lengths are checked against
+//! the buffer before anything is read: a header that claims more bytes than
+//! the buffer holds is an error, never an out-of-bounds read.
+
+use core::ptr::MemSpan
+
+/// One RLP item inside a buffer: where its encoding starts, where its payload
+/// starts and how long the payload is.
+pub struct Item {
+    /// Offset of the first header byte.
+    pub start: usize,
+    /// Offset of the first payload byte.
+    pub payload: usize,
+    /// Payload length in bytes.
+    pub len: usize,
+    /// `true` for a list, `false` for a byte string.
+    pub list: bool,
+}
+
+impl Copy for Item {}
+
+impl Item {
+    /// Offset one past the last byte of the item.
+    pub fn end(self) -> usize {
+        self.payload + self.len
+    }
+
+    /// Length of the whole encoding, header included.
+    pub fn encoded_len(self) -> usize {
+        self.end() - self.start
+    }
+
+    /// The payload read as a big-endian integer of at most 32 bytes.
+    pub fn as_word(self, _ buf: MemSpan) -> Option<u256> {
+        if self.list || self.len > 32 {
+            return Option::None
+        }
+        Option::Some(read_be(buf, at: self.payload, len: self.len))
+    }
+}
+
+/// Reads the item whose header starts at `at`; it must end at or before `limit`.
+pub fn item_at(_ buf: MemSpan, at: usize, limit: usize) -> Option<Item> {
+    if at >= limit || limit > buf.len() {
+        return Option::None
+    }
+    let prefix = buf.byte_at(at) as usize
+    if prefix < 0x80 {
+        return Option::Some(Item { start: at, payload: at, len: 1, list: false })
+    }
+    let list = prefix >= 0xc0
+    let short = if list { prefix - 0xc0 } else { prefix - 0x80 }
+    if short < 56 {
+        let payload = at + 1
+        if short > limit - payload {
+            return Option::None
+        }
+        return Option::Some(Item { start: at, payload, len: short, list })
+    }
+    // Long form: the next `short - 55` bytes hold the payload length.
+    let len_len = short - 55
+    if len_len > 8 || len_len >= limit - at {
+        return Option::None
+    }
+    let len: usize = read_be(buf, at: at + 1, len: len_len).downcast_truncate()
+    let payload = at + 1 + len_len
+    if len > limit - payload {
+        return Option::None
+    }
+    Option::Some(Item { start: at, payload, len, list })
+}
+
+/// Reads the single item that fills `buf[at..at + len]` exactly.
+pub fn item_exact(_ buf: MemSpan, at: usize, len: usize) -> Option<Item> {
+    let item = item_at(buf, at, limit: at + len)?
+    if item.end() != at + len {
+        return Option::None
+    }
+    Option::Some(item)
+}
+
+/// The item after `prev` inside `list`, or `None` past the end.
+pub fn next_in(_ buf: MemSpan, list: Item, prev: Item) -> Option<Item> {
+    item_at(buf, at: prev.end(), limit: list.end())
+}
+
+/// The first item of `list`.
+pub fn first_in(_ buf: MemSpan, _ list: Item) -> Option<Item> {
+    item_at(buf, at: list.payload, limit: list.end())
+}
+
+/// Item `index` of `list`, found by skipping the items before it.
+pub fn nth(_ buf: MemSpan, list: Item, index: usize) -> Option<Item> {
+    var item = first_in(buf, list)?
+    var i: usize = 0
+    while i < index {
+        item = next_in(buf, list, prev: item)?
+        i += 1
+    }
+    Option::Some(item)
+}
+
+/// Number of items in `list`; `None` if any item overruns it.
+pub fn count(_ buf: MemSpan, _ list: Item) -> Option<usize> {
+    var n: usize = 0
+    var at = list.payload
+    let end = list.end()
+    while at < end {
+        let item = item_at(buf, at, limit: end)?
+        at = item.end()
+        n += 1
+    }
+    Option::Some(n)
+}
+
+/// Reads `len` (at most 32) bytes at `at` as a big-endian integer.
+pub fn read_be(_ buf: MemSpan, at: usize, len: usize) -> u256 {
+    if len == 0 {
+        return 0
+    }
+    // One word load when the buffer has 32 bytes from `at` on.
+    if at <= buf.len() && buf.len() - at >= 32 {
+        let word = buf.read_word(at)
+        if len == 32 {
+            return word
+        }
+        return word >> ((32 - len) * 8) as u256
+    }
+    var value: u256 = 0
+    var i: usize = 0
+    while i < len {
+        value = (value << 8) | (buf.byte_at(at + i) as u256)
+        i += 1
+    }
+    value
+}
