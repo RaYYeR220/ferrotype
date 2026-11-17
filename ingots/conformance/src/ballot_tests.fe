@@ -1,0 +1,233 @@
+//! The ballot rules, driven through a contract that wires the same `Ledger`
+//! the Plebiscite uses, with the clock passed in so deadlines can be tested.
+//! The snapshot is USDC's storage root at a real mainnet block; the weights
+//! come from real storage proofs.
+#![cfg(target = "evm")]
+
+use core::text::decode_hex
+use std::abi::Bytes
+
+use contracts::ballot::{self, Ledger, Snapshot}
+use contracts::plebiscite::weight_of
+use ferrotype::state::StorageRoot
+use ingot::mainnet_usdc
+
+/// USDC (FiatToken v2.2): balances and the blacklist bit at slot 9.
+const LAYOUT: u8 = 2
+const BALANCE_SLOT: u256 = 9
+
+msg HarnessMsg {
+    #[selector = 0x01]
+    Open { deadline: u256, data_hash: u256 } -> u256,
+    #[selector = 0x02]
+    Cast { id: u256, voter: Address, weight: u256, support: bool, now: u256 },
+    #[selector = 0x03]
+    Weight { id: u256, holder: Address, proof: Bytes } -> u256,
+    #[selector = 0x04]
+    Settle { id: u256, data_hash: u256, now: u256, quorum: u256 } -> bool,
+    #[selector = 0x05]
+    Votes { id: u256 } -> (u256, u256),
+}
+
+pub contract LedgerHarness {
+    mut ledger: Ledger,
+
+    recv HarnessMsg {
+        Open { deadline, data_hash } -> u256 uses (mut ledger) {
+            let snapshot = Snapshot {
+                block: mainnet_usdc::BLOCK_NUMBER,
+                storage_root: StorageRoot { value: mainnet_usdc::STORAGE_ROOT },
+                supply: 1000,
+            }
+            ballot::open(
+                proposer: Address::zero(),
+                target: Address::new(0xbeef),
+                value: Wei::zero(),
+                data_hash,
+                snapshot,
+                deadline: Timestamp::from_seconds(deadline),
+            )
+        }
+        Cast { id, voter, weight, support, now } uses (mut ledger) {
+            ballot::cast(id, voter, weight, support, now: Timestamp::from_seconds(now))
+        }
+        Weight { id, holder, proof } -> u256 uses (ledger) {
+            weight_of(ballot::get(id), holder, proof, kind: LAYOUT, slot: BALANCE_SLOT)
+        }
+        Settle { id, data_hash, now, quorum } -> bool uses (mut ledger) {
+            let _ = ballot::settle(id, data_hash, now: Timestamp::from_seconds(now), quorum_bps: quorum)
+            true
+        }
+        Votes { id } -> (u256, u256) uses (ledger) {
+            let p = ballot::get(id)
+            (p.votes_for, p.votes_against)
+        }
+    }
+}
+
+fn deploy() -> Address uses (evm: mut Evm) {
+    evm.create2<LedgerHarness>(value: Wei::zero(), args: (), salt: 0)
+}
+
+fn open(_ h: Address, deadline: u256) -> u256 uses (evm: mut Evm) {
+    evm.call(addr: h, gas: 1000000, value: Wei::zero(), message: HarnessMsg::Open { deadline, data_hash: 7 })
+}
+
+fn cast(_ h: Address, id: u256, voter: u256, weight: u256, support: bool, now: u256) uses (evm: mut Evm) {
+    evm.call(addr: h, gas: 1000000, value: Wei::zero(), message: HarnessMsg::Cast { id, voter: Address::new(voter), weight, support, now })
+}
+
+fn settle(_ h: Address, id: u256, data_hash: u256, now: u256, quorum: u256) -> bool uses (evm: mut Evm) {
+    evm.call(addr: h, gas: 1000000, value: Wei::zero(), message: HarnessMsg::Settle { id, data_hash, now, quorum })
+}
+
+#[test]
+fn proposals_are_numbered_from_one() uses (evm: mut Evm) {
+    let h = deploy()
+    assert!(open(h, deadline: 100) == 1)
+    assert!(open(h, deadline: 100) == 2)
+}
+
+#[test]
+fn votes_are_tallied_per_side() uses (evm: mut Evm) {
+    let h = deploy()
+    let id = open(h, deadline: 100)
+    cast(h, id, voter: 1, weight: 600, support: true, now: 10)
+    cast(h, id, voter: 2, weight: 150, support: false, now: 20)
+    cast(h, id, voter: 3, weight: 50, support: true, now: 99)
+    let (yes, no): (u256, u256) = evm.call(addr: h, gas: 100000, value: Wei::zero(), message: HarnessMsg::Votes { id })
+    assert!(yes == 650)
+    assert!(no == 150)
+}
+
+#[test(should_revert)]
+fn a_holder_votes_once() uses (evm: mut Evm) {
+    let h = deploy()
+    let id = open(h, deadline: 100)
+    cast(h, id, voter: 1, weight: 10, support: true, now: 10)
+    cast(h, id, voter: 1, weight: 10, support: false, now: 11)
+}
+
+#[test(should_revert)]
+fn no_votes_after_the_deadline() uses (evm: mut Evm) {
+    let h = deploy()
+    let id = open(h, deadline: 100)
+    cast(h, id, voter: 1, weight: 10, support: true, now: 100)
+}
+
+#[test(should_revert)]
+fn zero_weight_cannot_vote() uses (evm: mut Evm) {
+    let h = deploy()
+    let id = open(h, deadline: 100)
+    cast(h, id, voter: 1, weight: 0, support: true, now: 10)
+}
+
+#[test(should_revert)]
+fn unknown_proposal() uses (evm: mut Evm) {
+    let h = deploy()
+    cast(h, id: 1, voter: 1, weight: 10, support: true, now: 10)
+}
+
+#[test]
+fn passed_proposal_settles_once() uses (evm: mut Evm) {
+    let h = deploy()
+    let id = open(h, deadline: 100)
+    cast(h, id, voter: 1, weight: 600, support: true, now: 10)
+    cast(h, id, voter: 2, weight: 100, support: false, now: 10)
+    // 600 for out of a supply of 1000 meets a 40% quorum.
+    assert!(settle(h, id, data_hash: 7, now: 100, quorum: 4000))
+}
+
+#[test(should_revert)]
+fn settles_only_once() uses (evm: mut Evm) {
+    let h = deploy()
+    let id = open(h, deadline: 100)
+    cast(h, id, voter: 1, weight: 600, support: true, now: 10)
+    let _ = settle(h, id, data_hash: 7, now: 100, quorum: 4000)
+    let _ = settle(h, id, data_hash: 7, now: 101, quorum: 4000)
+}
+
+#[test(should_revert)]
+fn cannot_settle_while_voting() uses (evm: mut Evm) {
+    let h = deploy()
+    let id = open(h, deadline: 100)
+    cast(h, id, voter: 1, weight: 600, support: true, now: 10)
+    let _ = settle(h, id, data_hash: 7, now: 99, quorum: 4000)
+}
+
+#[test(should_revert)]
+fn quorum_is_enforced() uses (evm: mut Evm) {
+    let h = deploy()
+    let id = open(h, deadline: 100)
+    cast(h, id, voter: 1, weight: 300, support: true, now: 10)
+    // 300 of 1000 is below a 40% quorum.
+    let _ = settle(h, id, data_hash: 7, now: 100, quorum: 4000)
+}
+
+#[test(should_revert)]
+fn more_against_than_for_fails() uses (evm: mut Evm) {
+    let h = deploy()
+    let id = open(h, deadline: 100)
+    cast(h, id, voter: 1, weight: 500, support: true, now: 10)
+    cast(h, id, voter: 2, weight: 500, support: false, now: 10)
+    let _ = settle(h, id, data_hash: 7, now: 100, quorum: 1000)
+}
+
+#[test(should_revert)]
+fn executes_only_the_proposed_calldata() uses (evm: mut Evm) {
+    let h = deploy()
+    let id = open(h, deadline: 100)
+    cast(h, id, voter: 1, weight: 600, support: true, now: 10)
+    let _ = settle(h, id, data_hash: 8, now: 100, quorum: 4000)
+}
+
+#[test]
+fn weight_is_the_proven_usdc_balance() uses (evm: mut Evm) {
+    let h = deploy()
+    let id = open(h, deadline: 100)
+    // 0x...dEaD held 57,573.374812 USDC at the snapshot block.
+    let weight: u256 = evm.call(
+        addr: h,
+        gas: 1000000,
+        value: Wei::zero(),
+        message: HarnessMsg::Weight {
+            id,
+            holder: Address::new(0x000000000000000000000000000000000000dEaD),
+            proof: decode_hex(mainnet_usdc::slot1_packed()).unwrap(),
+        },
+    )
+    assert!(weight == mainnet_usdc::SLOT1_VALUE)
+}
+
+#[test(should_revert)]
+fn blacklisted_holder_has_no_vote() uses (evm: mut Evm) {
+    let h = deploy()
+    let id = open(h, deadline: 100)
+    let _: u256 = evm.call(
+        addr: h,
+        gas: 1000000,
+        value: Wei::zero(),
+        message: HarnessMsg::Weight {
+            id,
+            holder: Address::new(0x28c6c06298d514db089934071355e5743bf21d60),
+            proof: decode_hex(mainnet_usdc::slot0_packed()).unwrap(),
+        },
+    )
+}
+
+#[test(should_revert)]
+fn a_proof_for_someone_else_is_no_weight() uses (evm: mut Evm) {
+    let h = deploy()
+    let id = open(h, deadline: 100)
+    // The dEaD proof, claimed for another holder.
+    let _: u256 = evm.call(
+        addr: h,
+        gas: 1000000,
+        value: Wei::zero(),
+        message: HarnessMsg::Weight {
+            id,
+            holder: Address::new(0x1234),
+            proof: decode_hex(mainnet_usdc::slot1_packed()).unwrap(),
+        },
+    )
+}

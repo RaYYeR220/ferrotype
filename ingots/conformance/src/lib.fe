@@ -11,3 +11,4 @@ pub use vectors_inclusion
 pub use vectors_inline
 pub use vectors_exclusion
 pub use vectors_invalid
+pub use ballot_tests
