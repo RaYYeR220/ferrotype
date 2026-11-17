@@ -29,7 +29,7 @@ pub const CALL_FAILED: u8 = 12
 
 /// Reverts with `Refused { reason }`.
 pub fn refuse(_ reason: u8) -> ! {
-    std::evm::revert(Refused { reason })
+    std::evm::revert_error(Refused { reason })
 }
 
 /// The token's state at the block a proposal counts votes at.

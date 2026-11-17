@@ -19,5 +19,5 @@ pub fn reason_code(_ e: ProofError) -> u8 {
 
 /// Reverts with `InvalidProof` for `e`.
 pub fn reject(_ e: ProofError) -> ! {
-    std::evm::revert(InvalidProof { reason: reason_code(e) })
+    std::evm::revert_error(InvalidProof { reason: reason_code(e) })
 }

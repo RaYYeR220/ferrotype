@@ -25,14 +25,14 @@
       "case": "usdc-holder",
       "implementation": "ferrotype",
       "mutation": "wrong-state-root",
-      "note": "InvalidProof(2) HashMismatch (no selector)",
+      "note": "InvalidProof(2) HashMismatch",
       "outcome": "rejected"
     },
     {
       "case": "usdc-holder",
       "implementation": "ferrotype-packed",
       "mutation": "wrong-state-root",
-      "note": "InvalidProof(2) HashMismatch (no selector)",
+      "note": "InvalidProof(2) HashMismatch",
       "outcome": "rejected"
     },
     {
@@ -60,14 +60,14 @@
       "case": "usdc-holder",
       "implementation": "ferrotype",
       "mutation": "tampered-storage-leaf",
-      "note": "InvalidProof(2) HashMismatch (no selector)",
+      "note": "InvalidProof(2) HashMismatch",
       "outcome": "rejected"
     },
     {
       "case": "usdc-holder",
       "implementation": "ferrotype-packed",
       "mutation": "tampered-storage-leaf",
-      "note": "InvalidProof(2) HashMismatch (no selector)",
+      "note": "InvalidProof(2) HashMismatch",
       "outcome": "rejected"
     },
     {
@@ -95,14 +95,14 @@
       "case": "usdc-holder",
       "implementation": "ferrotype",
       "mutation": "truncated-storage-proof",
-      "note": "InvalidProof(3) MissingNode (no selector)",
+      "note": "InvalidProof(3) MissingNode",
       "outcome": "rejected"
     },
     {
       "case": "usdc-holder",
       "implementation": "ferrotype-packed",
       "mutation": "truncated-storage-proof",
-      "note": "InvalidProof(3) MissingNode (no selector)",
+      "note": "InvalidProof(3) MissingNode",
       "outcome": "rejected"
     },
     {
@@ -130,14 +130,14 @@
       "case": "usdc-holder",
       "implementation": "ferrotype",
       "mutation": "truncated-account-proof",
-      "note": "InvalidProof(3) MissingNode (no selector)",
+      "note": "InvalidProof(3) MissingNode",
       "outcome": "rejected"
     },
     {
       "case": "usdc-holder",
       "implementation": "ferrotype-packed",
       "mutation": "truncated-account-proof",
-      "note": "InvalidProof(3) MissingNode (no selector)",
+      "note": "InvalidProof(3) MissingNode",
       "outcome": "rejected"
     }
   ]
