@@ -1,0 +1,157 @@
+//! The ballot box: proposals and votes, kept apart from where the vote
+//! weights come from.
+//!
+//! Every function here names, in its `uses` clause, exactly the storage it
+//! reads or writes. None of them can call another contract or move funds:
+//! they are not given the capability to.
+
+use std::evm::{StorageMap, keccak_words}
+use ferrotype::state::StorageRoot
+
+/// Why a governance action was refused.
+#[error]
+pub struct Refused {
+    pub reason: u8,
+}
+
+pub const UNKNOWN_PROPOSAL: u8 = 1
+pub const VOTING_CLOSED: u8 = 2
+pub const VOTING_OPEN: u8 = 3
+pub const ALREADY_VOTED: u8 = 4
+pub const NO_WEIGHT: u8 = 5
+pub const FLAGGED_HOLDER: u8 = 6
+pub const NOT_PASSED: u8 = 7
+pub const ALREADY_EXECUTED: u8 = 8
+pub const WRONG_CALLDATA: u8 = 9
+pub const UNKNOWN_BLOCK: u8 = 10
+pub const BAD_HEADER: u8 = 11
+pub const CALL_FAILED: u8 = 12
+
+/// Reverts with `Refused { reason }`.
+pub fn refuse(_ reason: u8) -> ! {
+    std::evm::revert(Refused { reason })
+}
+
+/// The token's state at the block a proposal counts votes at.
+pub struct Snapshot {
+    pub block: u256,
+    pub storage_root: StorageRoot,
+    pub supply: u256,
+}
+
+impl Copy for Snapshot {}
+
+/// One proposal: a single call the treasury makes if the vote passes.
+pub struct Proposal {
+    pub proposer: Address,
+    pub target: Address,
+    pub value: Wei,
+    /// Keccak-256 of the calldata; the calldata itself is passed again to `execute`.
+    pub data_hash: u256,
+    pub snapshot_block: u256,
+    pub storage_root: u256,
+    pub supply: u256,
+    pub deadline: Timestamp,
+    pub votes_for: u256,
+    pub votes_against: u256,
+    pub executed: bool,
+}
+
+impl Copy for Proposal {}
+
+/// All proposals and who voted on which.
+pub struct Ledger {
+    pub proposals: StorageMap<u256, Proposal>,
+    pub ballots: StorageMap<u256, bool>,
+    pub count: u256,
+}
+
+/// Opens a proposal counting votes at `snapshot`, until `deadline`.
+pub fn open(proposer: Address, target: Address, value: Wei, data_hash: u256, snapshot: Snapshot, deadline: Timestamp) -> u256
+    uses (ledger: mut Ledger)
+{
+    ledger.count += 1
+    let id = ledger.count
+    ledger.proposals.set(key: id, value: Proposal {
+        proposer,
+        target,
+        value,
+        data_hash,
+        snapshot_block: snapshot.block,
+        storage_root: snapshot.storage_root.value,
+        supply: snapshot.supply,
+        deadline,
+        votes_for: 0,
+        votes_against: 0,
+        executed: false,
+    })
+    id
+}
+
+/// The proposal `id`; refuses an unknown id.
+pub fn get(_ id: u256) -> Proposal uses (ledger: Ledger) {
+    if id == 0 || id > ledger.count {
+        refuse(UNKNOWN_PROPOSAL)
+    }
+    ledger.proposals.get(key: id)
+}
+
+/// Whether `voter` has voted on `id`.
+pub fn has_voted(_ id: u256, voter: Address) -> bool uses (ledger: Ledger) {
+    ledger.ballots.get(key: ballot_key(id, voter))
+}
+
+/// Records `voter`'s `weight` for or against `id` at time `now`.
+pub fn cast(_ id: u256, voter: Address, weight: u256, support: bool, now: Timestamp) uses (ledger: mut Ledger) {
+    var proposal = get(id)
+    if now >= proposal.deadline {
+        refuse(VOTING_CLOSED)
+    }
+    let key = ballot_key(id, voter)
+    if ledger.ballots.get(key: key) {
+        refuse(ALREADY_VOTED)
+    }
+    if weight == 0 {
+        refuse(NO_WEIGHT)
+    }
+    ledger.ballots.set(key: key, value: true)
+    if support {
+        proposal.votes_for += weight
+    } else {
+        proposal.votes_against += weight
+    }
+    ledger.proposals.set(key: id, value: proposal)
+}
+
+/// Whether `id` passed: voting is over, more weight for than against, and
+/// the weight for reaches `quorum_bps` basis points of the snapshot supply.
+pub fn passed(_ proposal: Proposal, now: Timestamp, quorum_bps: u256) -> bool {
+    now >= proposal.deadline
+        && proposal.votes_for > proposal.votes_against
+        && proposal.votes_for * 10000 >= proposal.supply * quorum_bps
+}
+
+/// Marks `id` executed if it passed and `data` is the calldata it was opened
+/// with; returns the proposal to execute.
+pub fn settle(_ id: u256, data_hash: u256, now: Timestamp, quorum_bps: u256) -> Proposal uses (ledger: mut Ledger) {
+    var proposal = get(id)
+    if proposal.executed {
+        refuse(ALREADY_EXECUTED)
+    }
+    if now < proposal.deadline {
+        refuse(VOTING_OPEN)
+    }
+    if !passed(proposal, now, quorum_bps) {
+        refuse(NOT_PASSED)
+    }
+    if data_hash != proposal.data_hash {
+        refuse(WRONG_CALLDATA)
+    }
+    proposal.executed = true
+    ledger.proposals.set(key: id, value: proposal)
+    proposal
+}
+
+fn ballot_key(_ id: u256, _ voter: Address) -> u256 {
+    keccak_words([id, voter.word()])
+}

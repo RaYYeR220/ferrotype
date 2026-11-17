@@ -1,0 +1,44 @@
+//! Block hashes the chain itself vouches for.
+//!
+//! `BLOCKHASH` covers the last 256 blocks. Since Prague, the EIP-2935 history
+//! contract keeps the last 8191 (about 27 hours on mainnet). A header is
+//! trusted only if its Keccak-256 hash equals one of these.
+
+use core::ptr::MemBuffer
+
+/// The EIP-2935 block hash history contract, at the same address on every chain
+/// that activated Prague.
+pub const HISTORY: Address = Address::new(0x0000F90827F1C53a10cb7A02335B175320002935)
+
+/// How many recent blocks `BLOCKHASH` answers for.
+pub const BLOCKHASH_WINDOW: u256 = 256
+
+/// How many recent blocks the history contract answers for.
+pub const HISTORY_WINDOW: u256 = 8191
+
+/// The hash of block `number`, if the chain still remembers it.
+pub fn block_hash(_ number: u256) -> Option<u256> uses (ctx: Ctx, call: Call) {
+    let current = ctx.block_number()
+    if number >= current {
+        return Option::None
+    }
+    let age = current - number
+    if age <= BLOCKHASH_WINDOW {
+        let hash = ctx.blockhash(number)
+        return if hash == 0 { Option::None } else { Option::Some(hash) }
+    }
+    if age > HISTORY_WINDOW {
+        return Option::None
+    }
+    // The history contract takes the block number as one 32-byte word and
+    // returns the hash as one word; it reverts outside its window.
+    var input = MemBuffer::new(32)
+    input.span().write_word(offset: 0, value: number)
+    var output = MemBuffer::new(32)
+    let outcome = call.raw_staticcall(addr: HISTORY, gas: 30000, args: input.span(), ret: mut output)
+    if !outcome.success() || outcome.returndata_len() != 32 {
+        return Option::None
+    }
+    let hash = output.span().read_word(0)
+    if hash == 0 { Option::None } else { Option::Some(hash) }
+}
