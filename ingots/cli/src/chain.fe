@@ -13,44 +13,77 @@ use ingot::rpc::{self, Response}
 
 /// A block header from the node: its RLP encoding and the fields the library
 /// decoded from it.
-pub struct Block {
-    pub rlp: MemBuffer,
-    pub header: Header,
-}
+pub struct Block { pub rlp: MemBuffer, pub header: Header }
 
 /// Fetches block `tag` (`latest` or a `0x` number), rebuilds the RLP header
 /// from its fields and hashes it with the library. A node that reports a
 /// block hash its own header does not hash to is refused.
-pub fn block<U: Display, T: Display>(_ url: U, _ tag: T) -> Result<MemBuffer, Block> uses (proc: mut Spawn) {
-    let response = rpc::call(url, "eth_getBlockByNumber", format!("[\"", tag, "\",false]"))?
+pub fn block<U: Display, T: Display>(_ url: U, _ tag: T) -> Result<MemBuffer, Block>
+uses (proc: mut Spawn)
+{
+    let response = rpc::call(
+        url,
+        "eth_getBlockByNumber",
+        format!("[\"", tag, "\",false]"),
+    )?
     let body = response.body.span()
     if response.result.is_null() {
         return Result::Err(format!("the node does not know block ", tag))
     }
     let rlp = match header_rlp(body, response.result) {
-        Option::Some(rlp) => rlp
-        Option::None => { return Result::Err(format!("block ", tag, " has a header field that is not hex")) }
+        Option::Some(rlp) => rlp,
+        Option::None => {
+            return Result::Err(
+                format!("block ", tag, " has a header field that is not hex"),
+            )
+        },
     }
     let header = match state::header(rlp.span(), at: 0, len: rlp.len()) {
-        Option::Some(h) => h
-        Option::None => { return Result::Err(format!("block ", tag, " does not decode as a header")) }
+        Option::Some(h) => h,
+        Option::None => {
+            return Result::Err(format!("block ", tag, " does not decode as a header"))
+        },
     }
     let reported = match word_field(body, response.result, "hash") {
-        Option::Some(w) => w
-        Option::None => { return Result::Err(format!("block ", tag, " has no hash")) }
+        Option::Some(w) => w,
+        Option::None => {
+            return Result::Err(format!("block ", tag, " has no hash"))
+        },
     }
     if reported != header.hash.value {
-        return Result::Err(format!("the node's header for block ", tag, " hashes to ", hex::word(header.hash.value), ", not to the block hash it reports, ", hex::word(reported)))
+        return Result::Err(
+            format!(
+                "the node's header for block ",
+                tag,
+                " hashes to ",
+                hex::word(header.hash.value),
+                ", not to the block hash it reports, ",
+                hex::word(reported),
+            ),
+        )
     }
     Result::Ok(Block { rlp, header })
 }
 
 /// `eth_getProof` for `account` and one `slot` at block `number`.
-pub fn proof<U: Display>(_ url: U, account: Address, slot: u256, number: u256) -> Result<MemBuffer, Response> uses (proc: mut Spawn) {
+pub fn proof<U: Display>(_ url: U, account: Address, slot: u256, number: u256) -> Result<
+    MemBuffer,
+    Response,
+>
+uses (proc: mut Spawn)
+{
     rpc::call(
         url,
         "eth_getProof",
-        format!("[\"", hex::address(account), "\",[\"", hex::word(slot), "\"],\"", hex::quantity(number), "\"]"),
+        format!(
+            "[\"",
+            hex::address(account),
+            "\",[\"",
+            hex::word(slot),
+            "\"],\"",
+            hex::quantity(number),
+            "\"]",
+        ),
     )
 }
 
@@ -64,15 +97,19 @@ pub fn packed(_ body: MemSpan, _ nodes: Value) -> Option<MemBuffer> {
             Option::Some(node) => {
                 let bytes = decode_hex(node.text(body))?
                 out.extend_from(bytes.span())
-            }
-            Option::None => { return Option::Some(out) }
+            },
+            Option::None => {
+                return Option::Some(out)
+            },
         }
         i += 1
     }
 }
 
 /// A `0x` quantity or hash field of `object` as a word.
-pub fn word_field<const N: usize>(_ body: MemSpan, _ object: Value, _ name: String<N>) -> Option<u256> {
+pub fn word_field<const N: usize>(_ body: MemSpan, _ object: Value, _ name: String<N>) -> Option<
+    u256,
+> {
     let value = json::get(body, object, name)?
     if !value.is_string() {
         return Option::None
@@ -115,7 +152,12 @@ pub fn header_rlp(_ body: MemSpan, _ block: Value) -> Option<MemBuffer> {
     Option::Some(out)
 }
 
-fn bytes_field<const N: usize>(_ out: mut MemBuffer, _ body: MemSpan, _ block: Value, _ name: String<N>) -> Option<()> {
+fn bytes_field<const N: usize>(
+    _ out: mut MemBuffer,
+    _ body: MemSpan,
+    _ block: Value,
+    _ name: String<N>,
+) -> Option<()> {
     let value = json::get(body, block, name)?
     if !value.is_string() {
         return Option::None
@@ -125,7 +167,12 @@ fn bytes_field<const N: usize>(_ out: mut MemBuffer, _ body: MemSpan, _ block: V
     Option::Some(())
 }
 
-fn int_field<const N: usize>(_ out: mut MemBuffer, _ body: MemSpan, _ block: Value, _ name: String<N>) -> Option<()> {
+fn int_field<const N: usize>(
+    _ out: mut MemBuffer,
+    _ body: MemSpan,
+    _ block: Value,
+    _ name: String<N>,
+) -> Option<()> {
     let value = json::get(body, block, name)?
     if !value.is_string() {
         return Option::None

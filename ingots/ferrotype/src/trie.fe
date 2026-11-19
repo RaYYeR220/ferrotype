@@ -56,10 +56,7 @@ pub enum Lookup {
 impl Copy for Lookup {}
 
 /// A range of the proof buffer holding one proof node.
-pub struct Span {
-    pub start: usize,
-    pub len: usize,
-}
+pub struct Span { pub start: usize, pub len: usize }
 
 impl Copy for Span {}
 
@@ -112,13 +109,22 @@ impl Observer for Quiet {
 
 /// Looks `path` (the Keccak-256 hash of the key) up in the trie with root
 /// `root`, using the proof nodes `nodes` read from `buf`.
-pub fn lookup<N: Nodes>(_ buf: MemSpan, nodes: mut N, root: u256, path: u256) -> Result<ProofError, Lookup> {
+pub fn lookup<N: Nodes>(_ buf: MemSpan, nodes: mut N, root: u256, path: u256) -> Result<
+    ProofError,
+    Lookup,
+> {
     var quiet = Quiet {}
     lookup_observed(buf, nodes: mut nodes, root, path, observer: mut quiet)
 }
 
 /// `lookup`, reporting each accepted node to `observer`.
-pub fn lookup_observed<N: Nodes, O: Observer>(_ buf: MemSpan, nodes: mut N, root: u256, path: u256, observer: mut O) -> Result<ProofError, Lookup> {
+pub fn lookup_observed<N: Nodes, O: Observer>(
+    _ buf: MemSpan,
+    nodes: mut N,
+    root: u256,
+    path: u256,
+    observer: mut O,
+) -> Result<ProofError, Lookup> {
     var want = Want { inline: false, hash: root, at: 0, len: 0 }
     var depth: usize = 0
     loop {
@@ -126,27 +132,37 @@ pub fn lookup_observed<N: Nodes, O: Observer>(_ buf: MemSpan, nodes: mut N, root
         var node: Item = Item { start: 0, payload: 0, len: 0, list: false }
         if want.inline {
             match rlp::item_exact(buf, at: want.at, len: want.len) {
-                Option::Some(item) => { node = item }
-                Option::None => { return Result::Err(ProofError::Malformed) }
+                Option::Some(item) => {
+                    node = item
+                },
+                Option::None => {
+                    return Result::Err(ProofError::Malformed)
+                },
             }
         } else {
             let span = match nodes.next_node(buf) {
-                Result::Ok(Option::Some(span)) => span
+                Result::Ok(Option::Some(span)) => span,
                 Result::Ok(Option::None) => {
                     // An empty trie is proven by its root alone.
                     if depth == 0 && want.hash == EMPTY_TRIE_ROOT {
                         return Result::Ok(Lookup::Absent)
                     }
                     return Result::Err(ProofError::MissingNode)
-                }
-                Result::Err(e) => { return Result::Err(e) }
+                },
+                Result::Err(e) => {
+                    return Result::Err(e)
+                },
             }
             if keccak(buf.slice(offset: span.start, len: span.len)) != want.hash {
                 return Result::Err(ProofError::HashMismatch)
             }
             match rlp::item_exact(buf, at: span.start, len: span.len) {
-                Option::Some(item) => { node = item }
-                Option::None => { return Result::Err(ProofError::Malformed) }
+                Option::Some(item) => {
+                    node = item
+                },
+                Option::None => {
+                    return Result::Err(ProofError::Malformed)
+                },
             }
         }
         if !node.list {
@@ -159,12 +175,16 @@ pub fn lookup_observed<N: Nodes, O: Observer>(_ buf: MemSpan, nodes: mut N, root
         }
 
         let first = match rlp::first_in(buf, node) {
-            Option::Some(item) => item
-            Option::None => { return Result::Err(ProofError::Malformed) }
+            Option::Some(item) => item,
+            Option::None => {
+                return Result::Err(ProofError::Malformed)
+            },
         }
         let second = match rlp::next_in(buf, list: node, prev: first) {
-            Option::Some(item) => item
-            Option::None => { return Result::Err(ProofError::Malformed) }
+            Option::Some(item) => item,
+            Option::None => {
+                return Result::Err(ProofError::Malformed)
+            },
         }
 
         var child = second
@@ -180,14 +200,23 @@ pub fn lookup_observed<N: Nodes, O: Observer>(_ buf: MemSpan, nodes: mut N, root
             let leaf = flag >= 2
             let odd = (flag & 1) == 1
             if O::WATCHING {
-                observer.node(depth, start: node.start, len: node.encoded_len(), kind: if leaf { LEAF } else { EXTENSION }, inline: want.inline)
+                observer
+                    .node(
+                        depth,
+                        start: node.start,
+                        len: node.encoded_len(),
+                        kind: if leaf { LEAF } else { EXTENSION },
+                        inline: want.inline,
+                    )
             }
             // An even path pads the flag byte with a zero nibble.
             if !odd && (buf.byte_at(first.payload) & 0x0f) != 0 {
                 return Result::Err(ProofError::Malformed)
             }
             let n: usize = (first.len - 1) * 2 + (if odd { 1 } else { 0 })
-            if n > 64 - depth || (leaf && n != 64 - depth) || (!leaf && (n == 0 || n == 64 - depth)) {
+            if n > 64 - depth
+                || (leaf && n != 64 - depth)
+                || (!leaf && (n == 0 || n == 64 - depth)) {
                 return Result::Err(ProofError::Malformed)
             }
             if n > 0 {
@@ -217,11 +246,20 @@ pub fn lookup_observed<N: Nodes, O: Observer>(_ buf: MemSpan, nodes: mut N, root
             }
             let nibble: usize = ((path >> ((63 - depth) * 4) as u256) & 0x0f).downcast_truncate()
             child = match rlp::branch_child(buf, node, index: nibble) {
-                Option::Some(item) => item
-                Option::None => { return Result::Err(ProofError::Malformed) }
+                Option::Some(item) => item,
+                Option::None => {
+                    return Result::Err(ProofError::Malformed)
+                },
             }
             if O::WATCHING {
-                observer.node(depth, start: node.start, len: node.encoded_len(), kind: BRANCH, inline: want.inline)
+                observer
+                    .node(
+                        depth,
+                        start: node.start,
+                        len: node.encoded_len(),
+                        kind: BRANCH,
+                        inline: want.inline,
+                    )
             }
             depth += 1
             if !child.list && child.len == 0 {
@@ -236,7 +274,12 @@ pub fn lookup_observed<N: Nodes, O: Observer>(_ buf: MemSpan, nodes: mut N, root
             }
             want = Want { inline: true, hash: 0, at: child.start, len: child.encoded_len() }
         } else if child.len == 32 {
-            want = Want { inline: false, hash: rlp::read_be(buf, at: child.payload, len: 32), at: 0, len: 0 }
+            want = Want {
+                inline: false,
+                hash: rlp::read_be(buf, at: child.payload, len: 32),
+                at: 0,
+                len: 0,
+            }
         } else {
             return Result::Err(ProofError::BadReference)
         }
@@ -246,9 +289,9 @@ pub fn lookup_observed<N: Nodes, O: Observer>(_ buf: MemSpan, nodes: mut N, root
 // Accepts `result` only if no proof node is left unused.
 fn finish<N: Nodes>(_ buf: MemSpan, nodes: mut N, result: Lookup) -> Result<ProofError, Lookup> {
     match nodes.next_node(buf) {
-        Result::Ok(Option::None) => Result::Ok(result)
-        Result::Ok(Option::Some(_)) => Result::Err(ProofError::ExtraNodes)
-        Result::Err(e) => Result::Err(e)
+        Result::Ok(Option::None) => Result::Ok(result),
+        Result::Ok(Option::Some(_)) => Result::Err(ProofError::ExtraNodes),
+        Result::Err(e) => Result::Err(e),
     }
 }
 

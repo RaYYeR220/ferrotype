@@ -139,9 +139,7 @@ pub fn branch_child(_ buf: MemSpan, _ list: Item, index: usize) -> Option<Item> 
         } else if prefix != 0x80 {
             item = item_at(buf, at, limit: end)?
         }
-        if i == index {
-            child = item
-        }
+        if i == index { child = item }
         at = item.end()
         i += 1
     }
@@ -166,15 +164,11 @@ pub fn count(_ buf: MemSpan, _ list: Item) -> Option<usize> {
 
 /// Reads `len` (at most 32) bytes at `at` as a big-endian integer.
 pub fn read_be(_ buf: MemSpan, at: usize, len: usize) -> u256 {
-    if len == 0 {
-        return 0
-    }
+    if len == 0 { return 0 }
     // One word load when the buffer has 32 bytes from `at` on.
     if at <= buf.len() && buf.len() - at >= 32 {
         let word = buf.read_word(at)
-        if len == 32 {
-            return word
-        }
+        if len == 32 { return word }
         return word >> ((32 - len) * 8) as u256
     }
     var value: u256 = 0

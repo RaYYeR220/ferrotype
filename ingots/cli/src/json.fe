@@ -23,40 +23,36 @@ pub enum Kind {
 impl Copy for Kind {}
 
 /// A value: its kind and the range `start..end` of its text.
-pub struct Value {
-    pub kind: Kind,
-    pub start: usize,
-    pub end: usize,
-}
+pub struct Value { pub kind: Kind, pub start: usize, pub end: usize }
 
 impl Copy for Value {}
 
 impl Value {
     pub fn is_object(self) -> bool {
         match self.kind {
-            Kind::Object => true
-            _ => false
+            Kind::Object => true,
+            _ => false,
         }
     }
 
     pub fn is_array(self) -> bool {
         match self.kind {
-            Kind::Array => true
-            _ => false
+            Kind::Array => true,
+            _ => false,
         }
     }
 
     pub fn is_string(self) -> bool {
         match self.kind {
-            Kind::String => true
-            _ => false
+            Kind::String => true,
+            _ => false,
         }
     }
 
     pub fn is_null(self) -> bool {
         match self.kind {
-            Kind::Null => true
-            _ => false
+            Kind::Null => true,
+            _ => false,
         }
     }
 
@@ -185,7 +181,9 @@ fn read(_ buf: MemSpan, at: usize, depth: usize) -> Option<Value> {
     Option::Some(Value { kind: Kind::Number, start: at, end })
 }
 
-fn read_container(_ buf: MemSpan, at: usize, depth: usize, close: u8, object: bool) -> Option<Value> {
+fn read_container(_ buf: MemSpan, at: usize, depth: usize, close: u8, object: bool) -> Option<
+    Value,
+> {
     let kind = if object { Kind::Object } else { Kind::Array }
     var pos = skip_ws(buf, at: at + 1)
     if pos < buf.len() && buf.byte_at(pos) == close {
@@ -248,7 +246,14 @@ fn read_string(_ buf: MemSpan, at: usize) -> Option<usize> {
                     k += 1
                 }
                 pos += 4
-            } else if e != b'"' && e != b'\\' && e != b'/' && e != b'b' && e != b'f' && e != b'n' && e != b'r' && e != b't' {
+            } else if e != b'"'
+                && e != b'\\'
+                && e != b'/'
+                && e != b'b'
+                && e != b'f'
+                && e != b'n'
+                && e != b'r'
+                && e != b't' {
                 return Option::None
             }
         }
@@ -296,7 +301,9 @@ fn read_number(_ buf: MemSpan, at: usize) -> Option<usize> {
     Option::Some(pos)
 }
 
-fn literal<const N: usize>(_ buf: MemSpan, at: usize, word: String<N>, kind: Kind) -> Option<Value> {
+fn literal<const N: usize>(_ buf: MemSpan, at: usize, word: String<N>, kind: Kind) -> Option<
+    Value,
+> {
     let n = word.text_len()
     if buf.len() - at < n {
         return Option::None

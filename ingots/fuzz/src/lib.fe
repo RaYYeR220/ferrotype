@@ -22,7 +22,11 @@ pub fn main() -> i32 uses (args: Args, out: mut Stdout) {
     }
     let outcome = fuzz::run(rounds, seed)
     println!("rounds    ", rounds, " (seed ", seed, ")")
-    println!("true      ", outcome.accepted, " still prove the true value")
+    println!(
+        "true      ",
+        outcome.accepted,
+        " still prove the true value",
+    )
     println!("rejected  ", outcome.rejected)
     println!("wrong     ", outcome.wrong)
     println!("digest    0x", hex(outcome.digest, 32))

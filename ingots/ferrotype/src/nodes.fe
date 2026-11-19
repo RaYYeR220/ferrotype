@@ -16,10 +16,7 @@ use ingot::rlp
 use ingot::trie::{Nodes, ProofError, Span}
 
 /// Nodes laid end to end in `buf[at..end]`.
-pub struct Packed {
-    at: usize,
-    end: usize,
-}
+pub struct Packed { at: usize, end: usize }
 
 impl Packed {
     /// The nodes in `buf[start..start + len]`.
@@ -36,20 +33,18 @@ impl Nodes for Packed {
         match rlp::item_at(buf, at: self.at, limit: self.end) {
             Option::Some(item) => {
                 self.at = item.end()
-                Result::Ok(Option::Some(Span { start: item.start, len: item.encoded_len() }))
-            }
-            Option::None => Result::Err(ProofError::Malformed)
+                Result::Ok(
+                    Option::Some(Span { start: item.start, len: item.encoded_len() }),
+                )
+            },
+            Option::None => Result::Err(ProofError::Malformed),
         }
     }
 }
 
 /// The elements of an ABI-encoded `bytes[]` whose encoding (length word
 /// first) starts at `base` in the buffer.
-pub struct AbiList {
-    base: usize,
-    index: usize,
-    count: usize,
-}
+pub struct AbiList { base: usize, index: usize, count: usize }
 
 impl AbiList {
     /// Reads the element count; `None` if `buf` cannot hold it.
@@ -61,7 +56,9 @@ impl AbiList {
         if count > ((buf.len() - base) / 32) as u256 {
             return Option::None
         }
-        Option::Some(AbiList { base, index: 0, count: count.downcast_truncate() })
+        Option::Some(
+            AbiList { base, index: 0, count: count.downcast_truncate() },
+        )
     }
 
     /// Number of nodes in the list.

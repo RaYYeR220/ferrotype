@@ -31,9 +31,7 @@ pub contract DemoToken uses (ctx: Ctx, log: mut Log) {
     mut supply: u256,
     minter: Address,
 
-    init() uses (ctx, mut minter) {
-        minter = ctx.caller()
-    }
+    init() uses (ctx, mut minter) { minter = ctx.caller() }
 
     recv TokenMsg {
         BalanceOf { owner } -> u256 uses (balances) {

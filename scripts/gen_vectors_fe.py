@@ -3,7 +3,8 @@
 
 Reads fixtures/synthetic/<group>.json (written by scripts/vectors/gen.mjs) and
 writes ingots/conformance/src/vectors_<group>.fe: one #[test] per case, each a
-call to `vector::check`. The same tests run on the EVM and natively.
+call to `vector::check`. The same tests run on the EVM and natively. Run
+`fe fmt ingots/conformance` afterwards.
 """
 import json
 import pathlib

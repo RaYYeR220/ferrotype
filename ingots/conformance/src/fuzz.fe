@@ -23,9 +23,7 @@ use ferrotype::trie::ProofError
 use ingot::{mainnet_usdc, mainnet_weth}
 
 /// A xorshift64* generator: deterministic, so a failing round can be replayed.
-struct Rng {
-    state: u64,
-}
+struct Rng { state: u64 }
 
 impl Rng {
     fn new(_ seed: u64) -> Self {
@@ -52,12 +50,7 @@ const SAME_VALUE: u256 = 0
 const WRONG_VALUE: u256 = 100
 
 /// The outcome of a fuzzing run.
-pub struct Outcome {
-    pub digest: u256,
-    pub accepted: usize,
-    pub rejected: usize,
-    pub wrong: usize,
-}
+pub struct Outcome { pub digest: u256, pub accepted: usize, pub rejected: usize, pub wrong: usize }
 
 impl Copy for Outcome {}
 
@@ -73,11 +66,29 @@ pub fn run(rounds: usize, seed: u64) -> Outcome {
     while round < rounds {
         let case = rng.below(4)
         let verdict = if case == 0 {
-            storage_round(slot0.span(), mut rng, root: mainnet_usdc::STORAGE_ROOT, slot: mainnet_usdc::SLOT0, truth: mainnet_usdc::SLOT0_VALUE)
+            storage_round(
+                slot0.span(),
+                mut rng,
+                root: mainnet_usdc::STORAGE_ROOT,
+                slot: mainnet_usdc::SLOT0,
+                truth: mainnet_usdc::SLOT0_VALUE,
+            )
         } else if case == 1 {
-            storage_round(slot1.span(), mut rng, root: mainnet_usdc::STORAGE_ROOT, slot: mainnet_usdc::SLOT1, truth: mainnet_usdc::SLOT1_VALUE)
+            storage_round(
+                slot1.span(),
+                mut rng,
+                root: mainnet_usdc::STORAGE_ROOT,
+                slot: mainnet_usdc::SLOT1,
+                truth: mainnet_usdc::SLOT1_VALUE,
+            )
         } else if case == 2 {
-            storage_round(weth.span(), mut rng, root: mainnet_weth::STORAGE_ROOT, slot: mainnet_weth::SLOT0, truth: 0)
+            storage_round(
+                weth.span(),
+                mut rng,
+                root: mainnet_weth::STORAGE_ROOT,
+                slot: mainnet_weth::SLOT0,
+                truth: 0,
+            )
         } else {
             account_round(account.span(), mut rng)
         }
@@ -97,24 +108,40 @@ pub fn run(rounds: usize, seed: u64) -> Outcome {
 fn storage_round(_ base: MemSpan, _ rng: mut Rng, root: u256, slot: u256, truth: u256) -> u256 {
     let damaged = mutate(base, mut rng)
     var nodes = Packed::new(start: 0, len: damaged.len())
-    match state::storage(damaged.span(), nodes: mut nodes, root: StorageRoot { value: root }, slot) {
-        Result::Ok(value) => if value == truth { SAME_VALUE } else { WRONG_VALUE }
-        Result::Err(e) => code(e)
+    match state::storage(
+        damaged.span(),
+        nodes: mut nodes,
+        root: StorageRoot { value: root },
+        slot,
+    ) {
+        Result::Ok(value) => if value == truth {
+            SAME_VALUE
+        } else {
+            WRONG_VALUE
+        },
+        Result::Err(e) => code(e),
     }
 }
 
 fn account_round(_ base: MemSpan, _ rng: mut Rng) -> u256 {
     let damaged = mutate(base, mut rng)
     var nodes = Packed::new(start: 0, len: damaged.len())
-    match state::account(damaged.span(), nodes: mut nodes, root: StateRoot { value: mainnet_usdc::STATE_ROOT }, address: mainnet_usdc::ACCOUNT) {
+    match state::account(
+        damaged.span(),
+        nodes: mut nodes,
+        root: StateRoot { value: mainnet_usdc::STATE_ROOT },
+        address: mainnet_usdc::ACCOUNT,
+    ) {
         Result::Ok(account) => {
-            if account.exists && account.storage_root.value == mainnet_usdc::STORAGE_ROOT && account.nonce == mainnet_usdc::NONCE {
+            if account.exists
+                && account.storage_root.value == mainnet_usdc::STORAGE_ROOT
+                && account.nonce == mainnet_usdc::NONCE {
                 SAME_VALUE
             } else {
                 WRONG_VALUE
             }
-        }
-        Result::Err(e) => code(e)
+        },
+        Result::Err(e) => code(e),
     }
 }
 
@@ -166,11 +193,11 @@ fn mutate(_ base: MemSpan, _ rng: mut Rng) -> MemBuffer {
 
 fn code(_ e: ProofError) -> u256 {
     match e {
-        ProofError::Malformed => 1
-        ProofError::HashMismatch => 2
-        ProofError::MissingNode => 3
-        ProofError::ExtraNodes => 4
-        ProofError::BadReference => 5
+        ProofError::Malformed => 1,
+        ProofError::HashMismatch => 2,
+        ProofError::MissingNode => 3,
+        ProofError::ExtraNodes => 4,
+        ProofError::BadReference => 5,
     }
 }
 

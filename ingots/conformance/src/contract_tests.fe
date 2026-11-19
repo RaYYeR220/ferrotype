@@ -9,65 +9,69 @@ use ingot::{mainnet_absent_account, mainnet_usdc, mainnet_weth}
 #[test]
 fn reader_contract_both_layouts() uses (evm: mut Evm) {
     let reader = evm.create2<StateReader>(value: Wei::zero(), args: (), salt: 0)
-    let packed: u256 = evm.call(
-        addr: reader,
-        gas: 2000000,
-        value: Wei::zero(),
-        message: ReaderMsg::StorageAtPacked {
-            state_root: Bytes32 { val: mainnet_usdc::STATE_ROOT },
-            account: mainnet_usdc::ACCOUNT,
-            slot: Bytes32 { val: mainnet_usdc::SLOT1 },
-            account_proof: decode_hex(mainnet_usdc::account_packed()).unwrap(),
-            storage_proof: decode_hex(mainnet_usdc::slot1_packed()).unwrap(),
-        },
-    )
+    let packed: u256 = evm
+        .call(
+            addr: reader,
+            gas: 2000000,
+            value: Wei::zero(),
+            message: ReaderMsg::StorageAtPacked {
+                state_root: Bytes32 { val: mainnet_usdc::STATE_ROOT },
+                account: mainnet_usdc::ACCOUNT,
+                slot: Bytes32 { val: mainnet_usdc::SLOT1 },
+                account_proof: decode_hex(mainnet_usdc::account_packed()).unwrap(),
+                storage_proof: decode_hex(mainnet_usdc::slot1_packed()).unwrap(),
+            },
+        )
     assert!(packed == mainnet_usdc::SLOT1_VALUE)
-    let listed: u256 = evm.call(
-        addr: reader,
-        gas: 2000000,
-        value: Wei::zero(),
-        message: ReaderMsg::StorageAt {
-            state_root: Bytes32 { val: mainnet_usdc::STATE_ROOT },
-            account: mainnet_usdc::ACCOUNT,
-            slot: Bytes32 { val: mainnet_usdc::SLOT1 },
-            account_proof: mainnet_usdc::account_list(),
-            storage_proof: mainnet_usdc::slot1_list(),
-        },
-    )
+    let listed: u256 = evm
+        .call(
+            addr: reader,
+            gas: 2000000,
+            value: Wei::zero(),
+            message: ReaderMsg::StorageAt {
+                state_root: Bytes32 { val: mainnet_usdc::STATE_ROOT },
+                account: mainnet_usdc::ACCOUNT,
+                slot: Bytes32 { val: mainnet_usdc::SLOT1 },
+                account_proof: mainnet_usdc::account_list(),
+                storage_proof: mainnet_usdc::slot1_list(),
+            },
+        )
     assert!(listed == mainnet_usdc::SLOT1_VALUE)
 }
 
 #[test]
 fn reader_contract_absent_account_and_slot() uses (evm: mut Evm) {
     let reader = evm.create2<StateReader>(value: Wei::zero(), args: (), salt: 0)
-    let value: u256 = evm.call(
-        addr: reader,
-        gas: 2000000,
-        value: Wei::zero(),
-        message: ReaderMsg::StorageAt {
-            state_root: Bytes32 { val: mainnet_absent_account::STATE_ROOT },
-            account: mainnet_absent_account::ACCOUNT,
-            slot: Bytes32 { val: 0 },
-            account_proof: mainnet_absent_account::account_list(),
-            storage_proof: mainnet_absent_account::slot0_list(),
-        },
-    )
+    let value: u256 = evm
+        .call(
+            addr: reader,
+            gas: 2000000,
+            value: Wei::zero(),
+            message: ReaderMsg::StorageAt {
+                state_root: Bytes32 { val: mainnet_absent_account::STATE_ROOT },
+                account: mainnet_absent_account::ACCOUNT,
+                slot: Bytes32 { val: 0 },
+                account_proof: mainnet_absent_account::account_list(),
+                storage_proof: mainnet_absent_account::slot0_list(),
+            },
+        )
     assert!(value == 0)
 }
 
 #[test(should_revert)]
 fn reader_contract_rejects_a_proof_for_another_account() uses (evm: mut Evm) {
     let reader = evm.create2<StateReader>(value: Wei::zero(), args: (), salt: 0)
-    let _: u256 = evm.call(
-        addr: reader,
-        gas: 2000000,
-        value: Wei::zero(),
-        message: ReaderMsg::StorageAtPacked {
-            state_root: Bytes32 { val: mainnet_usdc::STATE_ROOT },
-            account: mainnet_weth::ACCOUNT,
-            slot: Bytes32 { val: mainnet_usdc::SLOT1 },
-            account_proof: decode_hex(mainnet_usdc::account_packed()).unwrap(),
-            storage_proof: decode_hex(mainnet_usdc::slot1_packed()).unwrap(),
-        },
-    )
+    let _: u256 = evm
+        .call(
+            addr: reader,
+            gas: 2000000,
+            value: Wei::zero(),
+            message: ReaderMsg::StorageAtPacked {
+                state_root: Bytes32 { val: mainnet_usdc::STATE_ROOT },
+                account: mainnet_weth::ACCOUNT,
+                slot: Bytes32 { val: mainnet_usdc::SLOT1 },
+                account_proof: decode_hex(mainnet_usdc::account_packed()).unwrap(),
+                storage_proof: decode_hex(mainnet_usdc::slot1_packed()).unwrap(),
+            },
+        )
 }

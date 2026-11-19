@@ -25,7 +25,11 @@ pub fn block_hash(_ number: u256) -> Option<u256> uses (ctx: Ctx, call: Call) {
     let age = current - number
     if age <= BLOCKHASH_WINDOW {
         let hash = ctx.blockhash(number)
-        return if hash == 0 { Option::None } else { Option::Some(hash) }
+        return if hash == 0 {
+            Option::None
+        } else {
+            Option::Some(hash)
+        }
     }
     if age > HISTORY_WINDOW {
         return Option::None
@@ -35,10 +39,20 @@ pub fn block_hash(_ number: u256) -> Option<u256> uses (ctx: Ctx, call: Call) {
     var input = MemBuffer::new(32)
     input.span().write_word(offset: 0, value: number)
     var output = MemBuffer::new(32)
-    let outcome = call.raw_staticcall(addr: HISTORY, gas: 30000, args: input.span(), ret: mut output)
+    let outcome = call
+        .raw_staticcall(
+            addr: HISTORY,
+            gas: 30000,
+            args: input.span(),
+            ret: mut output,
+        )
     if !outcome.success() || outcome.returndata_len() != 32 {
         return Option::None
     }
     let hash = output.span().read_word(0)
-    if hash == 0 { Option::None } else { Option::Some(hash) }
+    if hash == 0 {
+        Option::None
+    } else {
+        Option::Some(hash)
+    }
 }

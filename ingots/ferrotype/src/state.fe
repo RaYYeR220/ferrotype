@@ -76,12 +76,14 @@ pub fn header(_ buf: MemSpan, at: usize, len: usize) -> Option<Header> {
         }
     }
     let hash = keccak(buf.slice(offset: at, len))
-    Option::Some(Header {
-        hash: BlockHash { value: hash },
-        state_root: StateRoot { value: state_root },
-        number,
-        timestamp,
-    })
+    Option::Some(
+        Header {
+            hash: BlockHash { value: hash },
+            state_root: StateRoot { value: state_root },
+            number,
+            timestamp,
+        },
+    )
 }
 
 /// An account as the state trie holds it. An account that does not exist
@@ -119,54 +121,96 @@ pub fn slot_path(_ slot: u256) -> u256 {
 }
 
 /// Proves `address`'s account against `root` with the state proof `nodes`.
-pub fn account<N: Nodes>(_ buf: MemSpan, nodes: mut N, root: StateRoot, address: Address) -> Result<ProofError, Account> {
-    match trie::lookup(buf, nodes: mut nodes, root: root.value, path: account_path(address)) {
-        Result::Ok(Lookup::Absent) => Result::Ok(Account::empty())
-        Result::Ok(Lookup::Found(value)) => decode_account(buf, value)
-        Result::Err(e) => Result::Err(e)
+pub fn account<N: Nodes>(_ buf: MemSpan, nodes: mut N, root: StateRoot, address: Address) -> Result<
+    ProofError,
+    Account,
+> {
+    match trie::lookup(
+        buf,
+        nodes: mut nodes,
+        root: root.value,
+        path: account_path(address),
+    ) {
+        Result::Ok(Lookup::Absent) => Result::Ok(Account::empty()),
+        Result::Ok(Lookup::Found(value)) => decode_account(buf, value),
+        Result::Err(e) => Result::Err(e),
     }
 }
 
 /// Proves the value of `slot` against the storage root `root` with the
 /// storage proof `nodes`. An absent slot holds zero.
-pub fn storage<N: Nodes>(_ buf: MemSpan, nodes: mut N, root: StorageRoot, slot: u256) -> Result<ProofError, u256> {
-    match trie::lookup(buf, nodes: mut nodes, root: root.value, path: slot_path(slot)) {
-        Result::Ok(Lookup::Absent) => Result::Ok(0)
-        Result::Ok(Lookup::Found(value)) => decode_slot(buf, value)
-        Result::Err(e) => Result::Err(e)
+pub fn storage<N: Nodes>(_ buf: MemSpan, nodes: mut N, root: StorageRoot, slot: u256) -> Result<
+    ProofError,
+    u256,
+> {
+    match trie::lookup(
+        buf,
+        nodes: mut nodes,
+        root: root.value,
+        path: slot_path(slot),
+    ) {
+        Result::Ok(Lookup::Absent) => Result::Ok(0),
+        Result::Ok(Lookup::Found(value)) => decode_slot(buf, value),
+        Result::Err(e) => Result::Err(e),
     }
 }
 
 /// `account`, reporting each node of the state proof to `observer`.
-pub fn account_observed<N: Nodes, O: Observer>(_ buf: MemSpan, nodes: mut N, root: StateRoot, address: Address, observer: mut O) -> Result<ProofError, Account> {
-    match trie::lookup_observed(buf, nodes: mut nodes, root: root.value, path: account_path(address), observer: mut observer) {
-        Result::Ok(Lookup::Absent) => Result::Ok(Account::empty())
-        Result::Ok(Lookup::Found(value)) => decode_account(buf, value)
-        Result::Err(e) => Result::Err(e)
+pub fn account_observed<N: Nodes, O: Observer>(
+    _ buf: MemSpan,
+    nodes: mut N,
+    root: StateRoot,
+    address: Address,
+    observer: mut O,
+) -> Result<ProofError, Account> {
+    match trie::lookup_observed(
+        buf,
+        nodes: mut nodes,
+        root: root.value,
+        path: account_path(address),
+        observer: mut observer,
+    ) {
+        Result::Ok(Lookup::Absent) => Result::Ok(Account::empty()),
+        Result::Ok(Lookup::Found(value)) => decode_account(buf, value),
+        Result::Err(e) => Result::Err(e),
     }
 }
 
 /// `storage`, reporting each node of the storage proof to `observer`.
-pub fn storage_observed<N: Nodes, O: Observer>(_ buf: MemSpan, nodes: mut N, root: StorageRoot, slot: u256, observer: mut O) -> Result<ProofError, u256> {
-    match trie::lookup_observed(buf, nodes: mut nodes, root: root.value, path: slot_path(slot), observer: mut observer) {
-        Result::Ok(Lookup::Absent) => Result::Ok(0)
-        Result::Ok(Lookup::Found(value)) => decode_slot(buf, value)
-        Result::Err(e) => Result::Err(e)
+pub fn storage_observed<N: Nodes, O: Observer>(
+    _ buf: MemSpan,
+    nodes: mut N,
+    root: StorageRoot,
+    slot: u256,
+    observer: mut O,
+) -> Result<ProofError, u256> {
+    match trie::lookup_observed(
+        buf,
+        nodes: mut nodes,
+        root: root.value,
+        path: slot_path(slot),
+        observer: mut observer,
+    ) {
+        Result::Ok(Lookup::Absent) => Result::Ok(0),
+        Result::Ok(Lookup::Found(value)) => decode_slot(buf, value),
+        Result::Err(e) => Result::Err(e),
     }
 }
 
 // The leaf holds the RLP list [nonce, balance, storageRoot, codeHash].
 fn decode_account(_ buf: MemSpan, _ value: Item) -> Result<ProofError, Account> {
     let list = match rlp::item_exact(buf, at: value.payload, len: value.len) {
-        Option::Some(item) => item
-        Option::None => { return Result::Err(ProofError::Malformed) }
+        Option::Some(item) => item,
+        Option::None => {
+            return Result::Err(ProofError::Malformed)
+        },
     }
     if !list.list {
         return Result::Err(ProofError::Malformed)
     }
     match read_account(buf, list) {
-        Option::Some(account) => Result::Ok(account)
-        Option::None => Result::Err(ProofError::Malformed)
+        Option::Some(account) => Result::Ok(account),
+        Option::None => Result::Err(ProofError::Malformed),
     }
 }
 
@@ -178,22 +222,24 @@ fn read_account(_ buf: MemSpan, _ list: Item) -> Option<Account> {
     if code_hash.end() != list.end() || storage_root.len != 32 || code_hash.len != 32 {
         return Option::None
     }
-    Option::Some(Account {
-        exists: true,
-        nonce: nonce.as_word(buf)?,
-        balance: balance.as_word(buf)?,
-        storage_root: StorageRoot { value: storage_root.as_word(buf)? },
-        code_hash: CodeHash { value: code_hash.as_word(buf)? },
-    })
+    Option::Some(
+        Account {
+            exists: true,
+            nonce: nonce.as_word(buf)?,
+            balance: balance.as_word(buf)?,
+            storage_root: StorageRoot { value: storage_root.as_word(buf)? },
+            code_hash: CodeHash { value: code_hash.as_word(buf)? },
+        },
+    )
 }
 
 // The leaf holds rlp(value) with leading zero bytes stripped.
 fn decode_slot(_ buf: MemSpan, _ value: Item) -> Result<ProofError, u256> {
     match rlp::item_exact(buf, at: value.payload, len: value.len) {
         Option::Some(item) => match item.as_word(buf) {
-            Option::Some(word) => Result::Ok(word)
-            Option::None => Result::Err(ProofError::Malformed)
-        }
-        Option::None => Result::Err(ProofError::Malformed)
+            Option::Some(word) => Result::Ok(word),
+            Option::None => Result::Err(ProofError::Malformed),
+        },
+        Option::None => Result::Err(ProofError::Malformed),
     }
 }

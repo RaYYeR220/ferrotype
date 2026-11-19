@@ -38,36 +38,56 @@ pub contract StateReader {
         StorageAt { state_root, account, slot, account_proof, storage_proof } -> u256 {
             let a = account_proof.encoded_span()
             var account_nodes = match AbiList::new(a, base: 0) {
-                Option::Some(list) => list
-                Option::None => reject(ProofError::Malformed)
+                Option::Some(list) => list,
+                Option::None => reject(ProofError::Malformed),
             }
-            let proven = match state::account(a, nodes: mut account_nodes, root: StateRoot { value: state_root.val }, address: account) {
-                Result::Ok(found) => found
-                Result::Err(e) => reject(e)
+            let proven = match state::account(
+                a,
+                nodes: mut account_nodes,
+                root: StateRoot { value: state_root.val },
+                address: account,
+            ) {
+                Result::Ok(found) => found,
+                Result::Err(e) => reject(e),
             }
             let s = storage_proof.encoded_span()
             var slot_nodes = match AbiList::new(s, base: 0) {
-                Option::Some(list) => list
-                Option::None => reject(ProofError::Malformed)
+                Option::Some(list) => list,
+                Option::None => reject(ProofError::Malformed),
             }
-            match state::storage(s, nodes: mut slot_nodes, root: proven.storage_root, slot: slot.val) {
-                Result::Ok(value) => value
-                Result::Err(e) => reject(e)
+            match state::storage(
+                s,
+                nodes: mut slot_nodes,
+                root: proven.storage_root,
+                slot: slot.val,
+            ) {
+                Result::Ok(value) => value,
+                Result::Err(e) => reject(e),
             }
         }
 
         StorageAtPacked { state_root, account, slot, account_proof, storage_proof } -> u256 {
             let a = account_proof.span()
             var account_nodes = Packed::new(start: 0, len: a.len())
-            let proven = match state::account(a, nodes: mut account_nodes, root: StateRoot { value: state_root.val }, address: account) {
-                Result::Ok(found) => found
-                Result::Err(e) => reject(e)
+            let proven = match state::account(
+                a,
+                nodes: mut account_nodes,
+                root: StateRoot { value: state_root.val },
+                address: account,
+            ) {
+                Result::Ok(found) => found,
+                Result::Err(e) => reject(e),
             }
             let s = storage_proof.span()
             var slot_nodes = Packed::new(start: 0, len: s.len())
-            match state::storage(s, nodes: mut slot_nodes, root: proven.storage_root, slot: slot.val) {
-                Result::Ok(value) => value
-                Result::Err(e) => reject(e)
+            match state::storage(
+                s,
+                nodes: mut slot_nodes,
+                root: proven.storage_root,
+                slot: slot.val,
+            ) {
+                Result::Ok(value) => value,
+                Result::Err(e) => reject(e),
             }
         }
     }

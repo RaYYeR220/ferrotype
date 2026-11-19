@@ -45,10 +45,7 @@ pub enum BalanceLayout {
 impl Copy for BalanceLayout {}
 
 /// A balance read from storage, with the flag a packed layout keeps beside it.
-pub struct Balance {
-    pub amount: u256,
-    pub flagged: bool,
-}
+pub struct Balance { pub amount: u256, pub flagged: bool }
 
 impl Copy for Balance {}
 
@@ -58,44 +55,50 @@ impl BalanceLayout {
     /// The storage slot holding `holder`'s balance.
     pub fn slot(self, _ holder: Address) -> u256 {
         match self {
-            BalanceLayout::Solidity(base) => solidity_mapping(slot: base, key: address_key(holder))
-            BalanceLayout::Vyper(base) => vyper_mapping(slot: base, key: address_key(holder))
-            BalanceLayout::FlaggedSolidity(base) => solidity_mapping(slot: base, key: address_key(holder))
+            BalanceLayout::Solidity(base) => solidity_mapping(slot: base, key: address_key(holder)),
+            BalanceLayout::Vyper(base) => vyper_mapping(slot: base, key: address_key(holder)),
+            BalanceLayout::FlaggedSolidity(base) => solidity_mapping(
+                slot: base,
+                key: address_key(holder),
+            ),
         }
     }
 
     /// The balance a slot's word holds under this layout.
     pub fn balance(self, _ word: u256) -> Balance {
         match self {
-            BalanceLayout::FlaggedSolidity(_) => Balance { amount: word & LOW_255, flagged: (word >> 255) == 1 }
-            _ => Balance { amount: word, flagged: false }
+            BalanceLayout::FlaggedSolidity(_) => Balance {
+                amount: word & LOW_255,
+                flagged: (word >> 255) == 1,
+            },
+            _ => Balance { amount: word, flagged: false },
         }
     }
 
     /// Encodes the layout as `(kind, slot)` for calldata and storage.
     pub fn kind(self) -> u8 {
         match self {
-            BalanceLayout::Solidity(_) => 0
-            BalanceLayout::Vyper(_) => 1
-            BalanceLayout::FlaggedSolidity(_) => 2
+            BalanceLayout::Solidity(_) => 0,
+            BalanceLayout::Vyper(_) => 1,
+            BalanceLayout::FlaggedSolidity(_) => 2,
         }
     }
 
     pub fn base_slot(self) -> u256 {
         match self {
-            BalanceLayout::Solidity(base) => base
-            BalanceLayout::Vyper(base) => base
-            BalanceLayout::FlaggedSolidity(base) => base
+            BalanceLayout::Solidity(base) => base,
+            BalanceLayout::Vyper(base) => base,
+            BalanceLayout::FlaggedSolidity(base) => base,
         }
     }
 
     /// The layout `kind` names, or `None` for an unknown kind.
     pub fn from_parts(kind: u8, slot: u256) -> Option<Self> {
         match kind {
-            0 => Option::Some(BalanceLayout::Solidity(slot))
-            1 => Option::Some(BalanceLayout::Vyper(slot))
-            2 => Option::Some(BalanceLayout::FlaggedSolidity(slot))
-            _ => Option::None
+            0 => Option::Some(BalanceLayout::Solidity(slot)),
+            1 => Option::Some(BalanceLayout::Vyper(slot)),
+            2 => Option::Some(BalanceLayout::FlaggedSolidity(slot)),
+            _ => Option::None,
         }
     }
 }

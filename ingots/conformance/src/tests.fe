@@ -14,13 +14,23 @@ use ingot::{mainnet_absent_account, mainnet_eoa_empty_storage, mainnet_usdc, mai
 fn prove_account(_ hex: DynString, root: u256, address: Address) -> Result<ProofError, Account> {
     let buf = decode_hex(hex).unwrap()
     var nodes = Packed::new(start: 0, len: buf.len())
-    state::account(buf.span(), nodes: mut nodes, root: StateRoot { value: root }, address)
+    state::account(
+        buf.span(),
+        nodes: mut nodes,
+        root: StateRoot { value: root },
+        address,
+    )
 }
 
 fn prove_slot(_ hex: DynString, root: u256, slot: u256) -> Result<ProofError, u256> {
     let buf = decode_hex(hex).unwrap()
     var nodes = Packed::new(start: 0, len: buf.len())
-    state::storage(buf.span(), nodes: mut nodes, root: StorageRoot { value: root }, slot)
+    state::storage(
+        buf.span(),
+        nodes: mut nodes,
+        root: StorageRoot { value: root },
+        slot,
+    )
 }
 
 fn expect_account(_ r: Result<ProofError, Account>, storage_root: u256) -> Account {
@@ -28,22 +38,30 @@ fn expect_account(_ r: Result<ProofError, Account>, storage_root: u256) -> Accou
         Result::Ok(account) => {
             assert!(account.storage_root.value == storage_root)
             account
-        }
-        Result::Err(_) => core::panic()
+        },
+        Result::Err(_) => core::panic(),
     }
 }
 
 fn expect_value(_ r: Result<ProofError, u256>, _ value: u256) {
     match r {
-        Result::Ok(v) => { assert!(v == value) }
-        Result::Err(_) => { assert!(false) }
+        Result::Ok(v) => {
+            assert!(v == value)
+        },
+        Result::Err(_) => {
+            assert!(false)
+        },
     }
 }
 
 fn expect_error(_ r: Result<ProofError, u256>, _ code: u8) {
     match r {
-        Result::Ok(_) => { assert!(false) }
-        Result::Err(e) => { assert!(contracts::errors::reason_code(e) == code) }
+        Result::Ok(_) => {
+            assert!(false)
+        },
+        Result::Err(e) => {
+            assert!(contracts::errors::reason_code(e) == code)
+        },
     }
 }
 
@@ -73,7 +91,11 @@ fn header_with_one_byte_changed_has_another_hash() {
 #[test]
 fn usdc_account() {
     let account = expect_account(
-        prove_account(mainnet_usdc::account_packed(), root: mainnet_usdc::STATE_ROOT, address: mainnet_usdc::ACCOUNT),
+        prove_account(
+            mainnet_usdc::account_packed(),
+            root: mainnet_usdc::STATE_ROOT,
+            address: mainnet_usdc::ACCOUNT,
+        ),
         storage_root: mainnet_usdc::STORAGE_ROOT,
     )
     assert!(account.exists)
@@ -84,7 +106,11 @@ fn usdc_account() {
 #[test]
 fn weth_account_balance() {
     let account = expect_account(
-        prove_account(mainnet_weth::account_packed(), root: mainnet_weth::STATE_ROOT, address: mainnet_weth::ACCOUNT),
+        prove_account(
+            mainnet_weth::account_packed(),
+            root: mainnet_weth::STATE_ROOT,
+            address: mainnet_weth::ACCOUNT,
+        ),
         storage_root: mainnet_weth::STORAGE_ROOT,
     )
     assert!(account.balance == mainnet_weth::BALANCE)
@@ -121,9 +147,15 @@ fn eoa_has_balance_and_no_storage() {
 
 #[test]
 fn account_proof_under_another_blocks_root_fails() {
-    match prove_account(mainnet_usdc::account_packed(), root: mainnet_weth::STATE_ROOT, address: mainnet_usdc::ACCOUNT) {
-        Result::Err(ProofError::HashMismatch) => {}
-        _ => { assert!(false) }
+    match prove_account(
+        mainnet_usdc::account_packed(),
+        root: mainnet_weth::STATE_ROOT,
+        address: mainnet_usdc::ACCOUNT,
+    ) {
+        Result::Err(ProofError::HashMismatch) => {},
+        _ => {
+            assert!(false)
+        },
     }
 }
 
@@ -132,7 +164,11 @@ fn account_proof_under_another_blocks_root_fails() {
 #[test]
 fn usdc_balance_of_blacklisted_holder() {
     expect_value(
-        prove_slot(mainnet_usdc::slot0_packed(), root: mainnet_usdc::STORAGE_ROOT, slot: mainnet_usdc::SLOT0),
+        prove_slot(
+            mainnet_usdc::slot0_packed(),
+            root: mainnet_usdc::STORAGE_ROOT,
+            slot: mainnet_usdc::SLOT0,
+        ),
         mainnet_usdc::SLOT0_VALUE,
     )
     // USDC packs a blacklist flag into the top bit of the balance word.
@@ -145,14 +181,22 @@ fn usdc_balance_of_blacklisted_holder() {
 #[test]
 fn usdc_balance_slot_is_derived_from_the_holder() {
     let holder = Address::new(0x28c6c06298d514db089934071355e5743bf21d60)
-    assert!(BalanceLayout::FlaggedSolidity(9).slot(holder) == mainnet_usdc::SLOT0)
-    assert!(solidity_mapping(slot: 9, key: address_key(holder)) == mainnet_usdc::SLOT0)
+    assert!(
+        BalanceLayout::FlaggedSolidity(9).slot(holder) == mainnet_usdc::SLOT0,
+    )
+    assert!(
+        solidity_mapping(slot: 9, key: address_key(holder)) == mainnet_usdc::SLOT0,
+    )
 }
 
 #[test]
 fn usdc_second_slot() {
     expect_value(
-        prove_slot(mainnet_usdc::slot1_packed(), root: mainnet_usdc::STORAGE_ROOT, slot: mainnet_usdc::SLOT1),
+        prove_slot(
+            mainnet_usdc::slot1_packed(),
+            root: mainnet_usdc::STORAGE_ROOT,
+            slot: mainnet_usdc::SLOT1,
+        ),
         mainnet_usdc::SLOT1_VALUE,
     )
 }
@@ -160,23 +204,40 @@ fn usdc_second_slot() {
 #[test]
 fn weth_zero_balance_is_an_absence_proof() {
     expect_value(
-        prove_slot(mainnet_weth::slot0_packed(), root: mainnet_weth::STORAGE_ROOT, slot: mainnet_weth::SLOT0),
+        prove_slot(
+            mainnet_weth::slot0_packed(),
+            root: mainnet_weth::STORAGE_ROOT,
+            slot: mainnet_weth::SLOT0,
+        ),
         0,
     )
 }
 
 #[test]
 fn slot_of_absent_account_is_zero_with_no_nodes() {
-    expect_value(prove_slot(mainnet_absent_account::slot0_packed(), root: EMPTY_TRIE_ROOT, slot: 0), 0)
+    expect_value(
+        prove_slot(
+            mainnet_absent_account::slot0_packed(),
+            root: EMPTY_TRIE_ROOT,
+            slot: 0,
+        ),
+        0,
+    )
 }
 
 #[test]
 fn storage_proof_for_another_slot_is_rejected() {
     // The USDC holder's proof does not prove slot 0 of the same trie.
-    let r = prove_slot(mainnet_usdc::slot0_packed(), root: mainnet_usdc::STORAGE_ROOT, slot: 0)
+    let r = prove_slot(
+        mainnet_usdc::slot0_packed(),
+        root: mainnet_usdc::STORAGE_ROOT,
+        slot: 0,
+    )
     match r {
-        Result::Ok(_) => { assert!(false) }
-        Result::Err(_) => {}
+        Result::Ok(_) => {
+            assert!(false)
+        },
+        Result::Err(_) => {},
     }
 }
 
@@ -188,7 +249,12 @@ fn tampered_node_is_rejected() {
     let flipped = buf.span().byte_at(at) ^ 0x01
     buf.span().write_be<u8>(offset: at, value: flipped)
     var nodes = Packed::new(start: 0, len: buf.len())
-    let r = state::storage(buf.span(), nodes: mut nodes, root: StorageRoot { value: mainnet_usdc::STORAGE_ROOT }, slot: mainnet_usdc::SLOT0)
+    let r = state::storage(
+        buf.span(),
+        nodes: mut nodes,
+        root: StorageRoot { value: mainnet_usdc::STORAGE_ROOT },
+        slot: mainnet_usdc::SLOT0,
+    )
     expect_error(r, 2)
 }
 
@@ -197,7 +263,12 @@ fn truncated_proof_is_rejected() {
     let full = decode_hex(mainnet_usdc::slot0_packed()).unwrap()
     // Drop the last node (67 bytes).
     var nodes = Packed::new(start: 0, len: full.len() - 67)
-    let r = state::storage(full.span(), nodes: mut nodes, root: StorageRoot { value: mainnet_usdc::STORAGE_ROOT }, slot: mainnet_usdc::SLOT0)
+    let r = state::storage(
+        full.span(),
+        nodes: mut nodes,
+        root: StorageRoot { value: mainnet_usdc::STORAGE_ROOT },
+        slot: mainnet_usdc::SLOT0,
+    )
     expect_error(r, 3)
 }
 
@@ -209,9 +280,17 @@ fn trailing_node_is_rejected() {
     let weth = decode_hex(hex).unwrap()
     var joined = core::ptr::MemBuffer::new(weth.len() + 532)
     joined.copy_from(dest_offset: 0, weth.span())
-    joined.copy_from(dest_offset: weth.len(), extra.span().slice(offset: 0, len: 532))
+    joined.copy_from(
+            dest_offset: weth.len(),
+            extra.span().slice(offset: 0, len: 532),
+        )
     var nodes = Packed::new(start: 0, len: joined.len())
-    let r = state::storage(joined.span(), nodes: mut nodes, root: StorageRoot { value: mainnet_weth::STORAGE_ROOT }, slot: mainnet_weth::SLOT0)
+    let r = state::storage(
+        joined.span(),
+        nodes: mut nodes,
+        root: StorageRoot { value: mainnet_weth::STORAGE_ROOT },
+        slot: mainnet_weth::SLOT0,
+    )
     expect_error(r, 4)
 }
 
@@ -222,6 +301,11 @@ fn abi_list_layout_reads_the_same_nodes() {
     let list = mainnet_usdc::slot0_list()
     let buf = list.encoded_span()
     var nodes = AbiList::new(buf, base: 0).unwrap()
-    let r = state::storage(buf, nodes: mut nodes, root: StorageRoot { value: mainnet_usdc::STORAGE_ROOT }, slot: mainnet_usdc::SLOT0)
+    let r = state::storage(
+        buf,
+        nodes: mut nodes,
+        root: StorageRoot { value: mainnet_usdc::STORAGE_ROOT },
+        slot: mainnet_usdc::SLOT0,
+    )
     expect_value(r, mainnet_usdc::SLOT0_VALUE)
 }

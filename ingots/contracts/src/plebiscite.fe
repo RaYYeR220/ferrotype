@@ -128,10 +128,26 @@ pub contract Plebiscite uses (ctx: Ctx, call: mut Call, log: mut Log) {
         period: Duration,
         quorum: u256,
         max_age: u256,
-    ) uses (mut token, mut layout_kind, mut balance_slot, mut supply_slot, mut voting_period, mut quorum_bps, mut max_snapshot_age) {
-        assert!(BalanceLayout::from_parts(kind: layout, slot: balances_at).is_some(), "unknown balance layout")
+    )
+    uses (
+        mut token,
+        mut layout_kind,
+        mut balance_slot,
+        mut supply_slot,
+        mut voting_period,
+        mut quorum_bps,
+        mut max_snapshot_age,
+    )
+    {
+        assert!(
+            BalanceLayout::from_parts(kind: layout, slot: balances_at).is_some(),
+            "unknown balance layout",
+        )
         assert!(quorum <= 10000, "quorum above 100%")
-        assert!(max_age >= 1 && max_age <= history::HISTORY_WINDOW, "snapshot age outside the history window")
+        assert!(
+            max_age >= 1 && max_age <= history::HISTORY_WINDOW,
+            "snapshot age outside the history window",
+        )
         token = token_address
         layout_kind = layout
         balance_slot = balances_at
@@ -143,9 +159,16 @@ pub contract Plebiscite uses (ctx: Ctx, call: mut Call, log: mut Log) {
 
     recv PlebisciteMsg {
         Propose { header, token_proof, supply_proof, target, value, data } -> u256
-            uses (ctx, call, token, supply_slot, voting_period, max_snapshot_age, mut ledger, mut log)
+        uses (ctx, call, token, supply_slot, voting_period, max_snapshot_age, mut ledger, mut log)
         {
-            let snapshot = anchor(header, token_proof, supply_proof, token, supply_slot, max_age: max_snapshot_age)
+            let snapshot = anchor(
+                header,
+                token_proof,
+                supply_proof,
+                token,
+                supply_slot,
+                max_age: max_snapshot_age,
+            )
             let deadline = ctx.timestamp() + voting_period
             let amount = wei(value)
             let id = ballot::open(
@@ -156,39 +179,64 @@ pub contract Plebiscite uses (ctx: Ctx, call: mut Call, log: mut Log) {
                 snapshot,
                 deadline,
             )
-            log.emit(Proposed {
-                id,
-                proposer: ctx.caller(),
-                snapshot_block: snapshot.block,
-                supply: snapshot.supply,
-                deadline,
-                target,
-                value: amount,
-            })
+            log.emit(
+                Proposed {
+                    id,
+                    proposer: ctx.caller(),
+                    snapshot_block: snapshot.block,
+                    supply: snapshot.supply,
+                    deadline,
+                    target,
+                    value: amount,
+                },
+            )
             id
         }
 
-        Vote { id, support, balance_proof } -> u256 uses (ctx, layout_kind, balance_slot, mut ledger, mut log) {
+        Vote { id, support, balance_proof } -> u256
+        uses (ctx, layout_kind, balance_slot, mut ledger, mut log)
+        {
             let voter = ctx.caller()
             let proposal = ballot::get(id)
-            let weight = weight_of(proposal, holder: voter, proof: balance_proof, kind: layout_kind, slot: balance_slot)
+            let weight = weight_of(
+                proposal,
+                holder: voter,
+                proof: balance_proof,
+                kind: layout_kind,
+                slot: balance_slot,
+            )
             ballot::cast(id, voter, weight, support, now: ctx.timestamp())
             log.emit(Voted { id, voter, support, weight })
             weight
         }
 
-        VotingPower { id, holder, balance_proof } -> u256 uses (layout_kind, balance_slot, ledger) {
+        VotingPower { id, holder, balance_proof } -> u256
+        uses (layout_kind, balance_slot, ledger)
+        {
             let proposal = ballot::get(id)
-            weight_of(proposal, holder, proof: balance_proof, kind: layout_kind, slot: balance_slot)
+            weight_of(
+                proposal,
+                holder,
+                proof: balance_proof,
+                kind: layout_kind,
+                slot: balance_slot,
+            )
         }
 
         Execute { id, data } -> bool uses (ctx, mut call, quorum_bps, mut ledger, mut log) {
             // Marked executed before the call, so the call cannot re-enter it.
-            let proposal = ballot::settle(id, data_hash: keccak256(data.span()), now: ctx.timestamp(), quorum_bps)
+            let proposal = ballot::settle(
+                id,
+                data_hash: keccak256(data.span()),
+                now: ctx.timestamp(),
+                quorum_bps,
+            )
             if !pay(proposal.target, proposal.value, data) {
                 refuse(ballot::CALL_FAILED)
             }
-            log.emit(Executed { id, target: proposal.target, value: proposal.value })
+            log.emit(
+                Executed { id, target: proposal.target, value: proposal.value },
+            )
             true
         }
 
@@ -210,15 +258,40 @@ pub contract Plebiscite uses (ctx: Ctx, call: mut Call, log: mut Log) {
             (p.snapshot_block, p.storage_root, p.supply)
         }
 
-        Tally { id } -> (u256, u256, u256, u256, u256, bool) uses (ledger) {
+        Tally { id } -> (u256, u256, u256, u256, u256, bool)
+        uses (ledger)
+        {
             let p = ballot::get(id)
-            (p.votes_for, p.votes_against, p.supply, p.deadline.as_seconds(), p.snapshot_block, p.executed)
+            (
+                p.votes_for,
+                p.votes_against,
+                p.supply,
+                p.deadline.as_seconds(),
+                p.snapshot_block,
+                p.executed,
+            )
         }
 
         Config -> (Address, u8, u256, u256, u256, u256, u256)
-            uses (token, layout_kind, balance_slot, supply_slot, voting_period, quorum_bps, max_snapshot_age)
+        uses (
+            token,
+            layout_kind,
+            balance_slot,
+            supply_slot,
+            voting_period,
+            quorum_bps,
+            max_snapshot_age,
+        )
         {
-            (token, layout_kind, balance_slot, supply_slot, voting_period.as_seconds(), quorum_bps, max_snapshot_age)
+            (
+                token,
+                layout_kind,
+                balance_slot,
+                supply_slot,
+                voting_period.as_seconds(),
+                quorum_bps,
+                max_snapshot_age,
+            )
         }
     }
 }
@@ -227,18 +300,32 @@ pub contract Plebiscite uses (ctx: Ctx, call: mut Call, log: mut Log) {
 /// Every call the contract makes goes through a free function like this one
 /// or `history::block_hash`, whose `uses` clause the compiler checks: this one
 /// takes `call` mutably, `block_hash` takes it read-only.
-fn pay(_ target: Address, _ value: Wei, _ data: Bytes) -> bool uses (ctx: Ctx, call: mut Call) {
-    call.try_call_raw(addr: target, gas: ctx.gas() - 5000, value, args: data.span()).success()
+fn pay(_ target: Address, _ value: Wei, _ data: Bytes) -> bool
+uses (ctx: Ctx, call: mut Call)
+{
+    call.try_call_raw(
+        addr: target,
+        gas: ctx.gas() - 5000,
+        value,
+        args: data.span(),
+    ).success()
 }
 
 /// Proves the token's storage root and total supply at the block `header`
 /// describes, after checking the chain remembers that block by this hash.
-fn anchor(_ header: Bytes, _ token_proof: Bytes, _ supply_proof: Bytes, _ token: Address, _ supply_slot: u256, max_age: u256) -> Snapshot
-    uses (ctx: Ctx, call: Call)
+fn anchor(
+    _ header: Bytes,
+    _ token_proof: Bytes,
+    _ supply_proof: Bytes,
+    _ token: Address,
+    _ supply_slot: u256,
+    max_age: u256,
+) -> Snapshot
+uses (ctx: Ctx, call: Call)
 {
     let h = match state::header(header.span(), at: 0, len: header.len()) {
-        Option::Some(h) => h
-        Option::None => refuse(ballot::BAD_HEADER)
+        Option::Some(h) => h,
+        Option::None => refuse(ballot::BAD_HEADER),
     }
     let current = ctx.block_number()
     if h.number >= current || current - h.number > max_age {
@@ -249,30 +336,51 @@ fn anchor(_ header: Bytes, _ token_proof: Bytes, _ supply_proof: Bytes, _ token:
             if hash != h.hash.value {
                 refuse(ballot::UNKNOWN_BLOCK)
             }
-        }
-        Option::None => refuse(ballot::UNKNOWN_BLOCK)
+        },
+        Option::None => refuse(ballot::UNKNOWN_BLOCK),
     }
     var account_nodes = Packed::new(start: 0, len: token_proof.len())
-    let account = match state::account(token_proof.span(), nodes: mut account_nodes, root: h.state_root, address: token) {
-        Result::Ok(account) => account
-        Result::Err(e) => reject(e)
+    let account = match state::account(
+        token_proof.span(),
+        nodes: mut account_nodes,
+        root: h.state_root,
+        address: token,
+    ) {
+        Result::Ok(account) => account,
+        Result::Err(e) => reject(e),
     }
     var supply_nodes = Packed::new(start: 0, len: supply_proof.len())
-    let supply = match state::storage(supply_proof.span(), nodes: mut supply_nodes, root: account.storage_root, slot: supply_slot) {
-        Result::Ok(value) => value
-        Result::Err(e) => reject(e)
+    let supply = match state::storage(
+        supply_proof.span(),
+        nodes: mut supply_nodes,
+        root: account.storage_root,
+        slot: supply_slot,
+    ) {
+        Result::Ok(value) => value,
+        Result::Err(e) => reject(e),
     }
     Snapshot { block: h.number, storage_root: account.storage_root, supply }
 }
 
 /// The balance `holder` held at the proposal's block, under the token's
 /// layout. A holder the token flags (USDC's blacklist bit) cannot vote.
-pub fn weight_of(_ proposal: Proposal, holder: Address, proof: Bytes, kind: u8, slot: u256) -> u256 {
+pub fn weight_of(
+    _ proposal: Proposal,
+    holder: Address,
+    proof: Bytes,
+    kind: u8,
+    slot: u256,
+) -> u256 {
     let layout = BalanceLayout::from_parts(kind, slot).unwrap()
     var nodes = Packed::new(start: 0, len: proof.len())
-    let word = match state::storage(proof.span(), nodes: mut nodes, root: StorageRoot { value: proposal.storage_root }, slot: layout.slot(holder)) {
-        Result::Ok(word) => word
-        Result::Err(e) => reject(e)
+    let word = match state::storage(
+        proof.span(),
+        nodes: mut nodes,
+        root: StorageRoot { value: proposal.storage_root },
+        slot: layout.slot(holder),
+    ) {
+        Result::Ok(word) => word,
+        Result::Err(e) => reject(e),
     }
     let balance = layout.balance(word)
     if balance.flagged {

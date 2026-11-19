@@ -12,16 +12,22 @@ use std::time::Duration
 use ingot::json::{self, Value}
 
 /// A node's answer: the whole response body and where its `result` lies.
-pub struct Response {
-    pub body: MemBuffer,
-    pub result: Value,
-}
+pub struct Response { pub body: MemBuffer, pub result: Value }
 
 /// Calls `method` with the JSON `params` (an array's text) on the node at `url`.
-pub fn call<U: Display, M: Display, P: Display>(_ url: U, _ method: M, _ params: P) -> Result<MemBuffer, Response>
-    uses (proc: mut Spawn)
+pub fn call<U: Display, M: Display, P: Display>(_ url: U, _ method: M, _ params: P) -> Result<
+    MemBuffer,
+    Response,
+>
+uses (proc: mut Spawn)
 {
-    let request = format!("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"", method, "\",\"params\":", params, "}")
+    let request = format!(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"",
+        method,
+        "\",\"params\":",
+        params,
+        "}",
+    )
     let command = Command::new("curl")
         .arg("--silent")
         .arg("--show-error")
@@ -40,27 +46,39 @@ pub fn call<U: Display, M: Display, P: Display>(_ url: U, _ method: M, _ params:
         .stderr(Redirect::Capture)
         .timeout(Duration::from_secs(60))
     let output = match proc.output(command) {
-        Result::Ok(output) => output
-        Result::Err(e) => { return Result::Err(format!("cannot run curl: ", e)) }
+        Result::Ok(output) => output,
+        Result::Err(e) => {
+            return Result::Err(format!("cannot run curl: ", e))
+        },
     }
     if !output.status.success() {
-        return Result::Err(format!("request to the node failed: ", output.stderr, output.stdout))
+        return Result::Err(
+            format!(
+                "request to the node failed: ",
+                output.stderr,
+                output.stdout,
+            ),
+        )
     }
     let body = output.stdout
     let root = match json::parse(body.span()) {
-        Option::Some(root) => root
-        Option::None => { return Result::Err(format!("the node did not answer with JSON: ", body)) }
+        Option::Some(root) => root,
+        Option::None => {
+            return Result::Err(format!("the node did not answer with JSON: ", body))
+        },
     }
     match json::get(body.span(), root, "error") {
         Option::Some(error) => {
-            let text = MemBuffer::from_span(body.span().slice(offset: error.start, len: error.end - error.start))
+            let text = MemBuffer::from_span(
+                body.span().slice(offset: error.start, len: error.end - error.start),
+            )
             return Result::Err(format!(method, " failed: ", text))
-        }
-        Option::None => {}
+        },
+        Option::None => {},
     }
     match json::get(body.span(), root, "result") {
-        Option::Some(result) => Result::Ok(Response { body, result })
-        Option::None => Result::Err(format!("the node's answer has no result: ", body))
+        Option::Some(result) => Result::Ok(Response { body, result }),
+        Option::None => Result::Err(format!("the node's answer has no result: ", body)),
     }
 }
 

@@ -19,22 +19,22 @@ pub fn check(root: u256, key: u256, path: u256, proof: DynString, expect: u8, wo
             assert!(expect == 0)
             let value = rlp::item_exact(buf.span(), at: item.payload, len: item.len).unwrap()
             assert!(value.as_word(buf.span()).unwrap() == word)
-        }
+        },
         Result::Ok(Lookup::Absent) => {
             assert!(expect == 100)
-        }
+        },
         Result::Err(e) => {
             assert!(code(e) == expect)
-        }
+        },
     }
 }
 
 fn code(_ e: ProofError) -> u8 {
     match e {
-        ProofError::Malformed => 1
-        ProofError::HashMismatch => 2
-        ProofError::MissingNode => 3
-        ProofError::ExtraNodes => 4
-        ProofError::BadReference => 5
+        ProofError::Malformed => 1,
+        ProofError::HashMismatch => 2,
+        ProofError::MissingNode => 3,
+        ProofError::ExtraNodes => 4,
+        ProofError::BadReference => 5,
     }
 }

@@ -23,7 +23,9 @@ pub fn quantity(_ value: u256) -> MemBuffer {
     var i = digits
     while i > 0 {
         i -= 1
-        out.push(digit(((value >> (i * 4) as u256) & 0x0f).downcast_truncate()))
+        out.push(
+            digit(((value >> (i * 4) as u256) & 0x0f).downcast_truncate()),
+        )
     }
     out
 }

@@ -49,13 +49,32 @@ pub contract LedgerHarness {
             )
         }
         Cast { id, voter, weight, support, now } uses (mut ledger) {
-            ballot::cast(id, voter, weight, support, now: Timestamp::from_seconds(now))
+            ballot::cast(
+                id,
+                voter,
+                weight,
+                support,
+                now: Timestamp::from_seconds(now),
+            )
         }
         Weight { id, holder, proof } -> u256 uses (ledger) {
-            weight_of(ballot::get(id), holder, proof, kind: LAYOUT, slot: BALANCE_SLOT)
+            weight_of(
+                ballot::get(id),
+                holder,
+                proof,
+                kind: LAYOUT,
+                slot: BALANCE_SLOT,
+            )
         }
-        Settle { id, data_hash, now, quorum } -> bool uses (mut ledger) {
-            let _ = ballot::settle(id, data_hash, now: Timestamp::from_seconds(now), quorum_bps: quorum)
+        Settle { id, data_hash, now, quorum } -> bool
+        uses (mut ledger)
+        {
+            let _ = ballot::settle(
+                id,
+                data_hash,
+                now: Timestamp::from_seconds(now),
+                quorum_bps: quorum,
+            )
             true
         }
         Votes { id } -> (u256, u256) uses (ledger) {
@@ -70,15 +89,34 @@ fn deploy() -> Address uses (evm: mut Evm) {
 }
 
 fn open(_ h: Address, deadline: u256) -> u256 uses (evm: mut Evm) {
-    evm.call(addr: h, gas: 1000000, value: Wei::zero(), message: HarnessMsg::Open { deadline, data_hash: 7 })
+    evm.call(
+        addr: h,
+        gas: 1000000,
+        value: Wei::zero(),
+        message: HarnessMsg::Open { deadline, data_hash: 7 },
+    )
 }
 
-fn cast(_ h: Address, id: u256, voter: u256, weight: u256, support: bool, now: u256) uses (evm: mut Evm) {
-    evm.call(addr: h, gas: 1000000, value: Wei::zero(), message: HarnessMsg::Cast { id, voter: Address::new(voter), weight, support, now })
+fn cast(_ h: Address, id: u256, voter: u256, weight: u256, support: bool, now: u256)
+uses (evm: mut Evm)
+{
+    evm.call(
+        addr: h,
+        gas: 1000000,
+        value: Wei::zero(),
+        message: HarnessMsg::Cast { id, voter: Address::new(voter), weight, support, now },
+    )
 }
 
-fn settle(_ h: Address, id: u256, data_hash: u256, now: u256, quorum: u256) -> bool uses (evm: mut Evm) {
-    evm.call(addr: h, gas: 1000000, value: Wei::zero(), message: HarnessMsg::Settle { id, data_hash, now, quorum })
+fn settle(_ h: Address, id: u256, data_hash: u256, now: u256, quorum: u256) -> bool
+uses (evm: mut Evm)
+{
+    evm.call(
+        addr: h,
+        gas: 1000000,
+        value: Wei::zero(),
+        message: HarnessMsg::Settle { id, data_hash, now, quorum },
+    )
 }
 
 #[test]
@@ -95,7 +133,13 @@ fn votes_are_tallied_per_side() uses (evm: mut Evm) {
     cast(h, id, voter: 1, weight: 600, support: true, now: 10)
     cast(h, id, voter: 2, weight: 150, support: false, now: 20)
     cast(h, id, voter: 3, weight: 50, support: true, now: 99)
-    let (yes, no): (u256, u256) = evm.call(addr: h, gas: 100000, value: Wei::zero(), message: HarnessMsg::Votes { id })
+    let (yes, no): (u256, u256) = evm
+        .call(
+            addr: h,
+            gas: 100000,
+            value: Wei::zero(),
+            message: HarnessMsg::Votes { id },
+        )
     assert!(yes == 650)
     assert!(no == 150)
 }
@@ -186,16 +230,17 @@ fn weight_is_the_proven_usdc_balance() uses (evm: mut Evm) {
     let h = deploy()
     let id = open(h, deadline: 100)
     // 0x...dEaD held 57,575.181148 USDC at the snapshot block.
-    let weight: u256 = evm.call(
-        addr: h,
-        gas: 1000000,
-        value: Wei::zero(),
-        message: HarnessMsg::Weight {
-            id,
-            holder: Address::new(0x000000000000000000000000000000000000dEaD),
-            proof: decode_hex(mainnet_usdc::slot1_packed()).unwrap(),
-        },
-    )
+    let weight: u256 = evm
+        .call(
+            addr: h,
+            gas: 1000000,
+            value: Wei::zero(),
+            message: HarnessMsg::Weight {
+                id,
+                holder: Address::new(0x000000000000000000000000000000000000dEaD),
+                proof: decode_hex(mainnet_usdc::slot1_packed()).unwrap(),
+            },
+        )
     assert!(weight == mainnet_usdc::SLOT1_VALUE)
 }
 
@@ -203,16 +248,17 @@ fn weight_is_the_proven_usdc_balance() uses (evm: mut Evm) {
 fn blacklisted_holder_has_no_vote() uses (evm: mut Evm) {
     let h = deploy()
     let id = open(h, deadline: 100)
-    let _: u256 = evm.call(
-        addr: h,
-        gas: 1000000,
-        value: Wei::zero(),
-        message: HarnessMsg::Weight {
-            id,
-            holder: Address::new(0x28c6c06298d514db089934071355e5743bf21d60),
-            proof: decode_hex(mainnet_usdc::slot0_packed()).unwrap(),
-        },
-    )
+    let _: u256 = evm
+        .call(
+            addr: h,
+            gas: 1000000,
+            value: Wei::zero(),
+            message: HarnessMsg::Weight {
+                id,
+                holder: Address::new(0x28c6c06298d514db089934071355e5743bf21d60),
+                proof: decode_hex(mainnet_usdc::slot0_packed()).unwrap(),
+            },
+        )
 }
 
 #[test(should_revert)]
@@ -220,14 +266,15 @@ fn a_proof_for_someone_else_is_no_weight() uses (evm: mut Evm) {
     let h = deploy()
     let id = open(h, deadline: 100)
     // The dEaD proof, claimed for another holder.
-    let _: u256 = evm.call(
-        addr: h,
-        gas: 1000000,
-        value: Wei::zero(),
-        message: HarnessMsg::Weight {
-            id,
-            holder: Address::new(0x1234),
-            proof: decode_hex(mainnet_usdc::slot1_packed()).unwrap(),
-        },
-    )
+    let _: u256 = evm
+        .call(
+            addr: h,
+            gas: 1000000,
+            value: Wei::zero(),
+            message: HarnessMsg::Weight {
+                id,
+                holder: Address::new(0x1234),
+                proof: decode_hex(mainnet_usdc::slot1_packed()).unwrap(),
+            },
+        )
 }

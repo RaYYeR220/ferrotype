@@ -10,9 +10,7 @@ use ferrotype::state::StorageRoot
 
 /// Why a governance action was refused.
 #[error]
-pub struct Refused {
-    pub reason: u8,
-}
+pub struct Refused { pub reason: u8 }
 
 pub const UNKNOWN_PROPOSAL: u8 = 1
 pub const VOTING_CLOSED: u8 = 2
@@ -33,11 +31,7 @@ pub fn refuse(_ reason: u8) -> ! {
 }
 
 /// The token's state at the block a proposal counts votes at.
-pub struct Snapshot {
-    pub block: u256,
-    pub storage_root: StorageRoot,
-    pub supply: u256,
-}
+pub struct Snapshot { pub block: u256, pub storage_root: StorageRoot, pub supply: u256 }
 
 impl Copy for Snapshot {}
 
@@ -67,24 +61,36 @@ pub struct Ledger {
 }
 
 /// Opens a proposal counting votes at `snapshot`, until `deadline`.
-pub fn open(proposer: Address, target: Address, value: Wei, data_hash: u256, snapshot: Snapshot, deadline: Timestamp) -> u256
-    uses (ledger: mut Ledger)
+pub fn open(
+    proposer: Address,
+    target: Address,
+    value: Wei,
+    data_hash: u256,
+    snapshot: Snapshot,
+    deadline: Timestamp,
+) -> u256
+uses (ledger: mut Ledger)
 {
     ledger.count += 1
     let id = ledger.count
-    ledger.proposals.set(key: id, value: Proposal {
-        proposer,
-        target,
-        value,
-        data_hash,
-        snapshot_block: snapshot.block,
-        storage_root: snapshot.storage_root.value,
-        supply: snapshot.supply,
-        deadline,
-        votes_for: 0,
-        votes_against: 0,
-        executed: false,
-    })
+    ledger
+        .proposals
+        .set(
+            key: id,
+            value: Proposal {
+                proposer,
+                target,
+                value,
+                data_hash,
+                snapshot_block: snapshot.block,
+                storage_root: snapshot.storage_root.value,
+                supply: snapshot.supply,
+                deadline,
+                votes_for: 0,
+                votes_against: 0,
+                executed: false,
+            },
+        )
     id
 }
 
@@ -102,7 +108,9 @@ pub fn has_voted(_ id: u256, voter: Address) -> bool uses (ledger: Ledger) {
 }
 
 /// Records `voter`'s `weight` for or against `id` at time `now`.
-pub fn cast(_ id: u256, voter: Address, weight: u256, support: bool, now: Timestamp) uses (ledger: mut Ledger) {
+pub fn cast(_ id: u256, voter: Address, weight: u256, support: bool, now: Timestamp)
+uses (ledger: mut Ledger)
+{
     var proposal = get(id)
     if now >= proposal.deadline {
         refuse(VOTING_CLOSED)
@@ -133,7 +141,9 @@ pub fn passed(_ proposal: Proposal, now: Timestamp, quorum_bps: u256) -> bool {
 
 /// Marks `id` executed if it passed and `data` is the calldata it was opened
 /// with; returns the proposal to execute.
-pub fn settle(_ id: u256, data_hash: u256, now: Timestamp, quorum_bps: u256) -> Proposal uses (ledger: mut Ledger) {
+pub fn settle(_ id: u256, data_hash: u256, now: Timestamp, quorum_bps: u256) -> Proposal
+uses (ledger: mut Ledger)
+{
     var proposal = get(id)
     if proposal.executed {
         refuse(ALREADY_EXECUTED)
