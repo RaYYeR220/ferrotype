@@ -12,3 +12,5 @@ pub use vectors_inline
 pub use vectors_exclusion
 pub use vectors_invalid
 pub use ballot_tests
+pub use fuzz
+pub use fuzz_native

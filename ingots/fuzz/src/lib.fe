@@ -1,0 +1,30 @@
+//! `fuzz [ROUNDS] [SEED]`: damage real mainnet proofs at random and verify
+//! them, natively. Prints how many still prove the true value, how many are
+//! rejected, and how many prove a wrong value (which must be zero), and the
+//! digest of every verdict, which any other build of the verifier must
+//! reproduce for the same rounds and seed.
+
+use core::text::{hex, parse_uint}
+use std::env::Args
+use std::io::Stdout
+use conformance::fuzz
+
+pub fn main() -> i32 uses (args: Args, out: mut Stdout) {
+    let rounds: usize = if args.count() > 1 {
+        parse_uint(args.get(1)).unwrap_or(default: 1000000).downcast_truncate()
+    } else {
+        1000000
+    }
+    let seed: u64 = if args.count() > 2 {
+        parse_uint(args.get(2)).unwrap_or(default: 1).downcast_truncate()
+    } else {
+        1
+    }
+    let outcome = fuzz::run(rounds, seed)
+    println!("rounds    ", rounds, " (seed ", seed, ")")
+    println!("true      ", outcome.accepted, " still prove the true value")
+    println!("rejected  ", outcome.rejected)
+    println!("wrong     ", outcome.wrong)
+    println!("digest    0x", hex(outcome.digest, 32))
+    if outcome.wrong == 0 { 0 } else { 1 }
+}

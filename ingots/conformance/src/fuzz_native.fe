@@ -1,0 +1,13 @@
+//! The long fuzzing run, natively: a million damaged proofs.
+#![cfg(target = "native")]
+
+use std::io::Stdout
+use ingot::fuzz
+
+#[test]
+fn a_million_damaged_proofs_never_prove_a_wrong_value() uses (out: mut Stdout) {
+    let outcome = fuzz::run(rounds: 1000000, seed: 1)
+    println!("fuzz: 1000000 rounds, ", outcome.accepted, " still prove the true value, ", outcome.rejected, " rejected, ", outcome.wrong, " wrong")
+    assert!(outcome.wrong == 0)
+}
+
