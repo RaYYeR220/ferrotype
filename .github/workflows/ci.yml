@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  FE_VERSION: v26.6.0
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Fe
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/argotorg/fe/master/feup/feup.sh | bash -s -- --version "$FE_VERSION" --no-modify-path
+          echo "$HOME/.fe/bin" >> "$GITHUB_PATH"
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.8.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: fe --version
+      - name: Formatting
+        run: |
+          for ingot in ferrotype contracts conformance cli fuzz; do fe fmt --check "ingots/$ingot"; done
+      - name: Build contracts, CLI and fuzzer
+        run: scripts/build.sh
+      - name: Test on the EVM, natively and as WebAssembly; fuzz; benchmark; end to end
+        run: |
+          anvil --silent &
+          sleep 2
+          RPC=http://127.0.0.1:8545 scripts/test.sh
+      - name: Check a saved mainnet proof offline
+        run: target/bin/ferrotype verify fixtures/mainnet/usdc.json
