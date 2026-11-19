@@ -1,0 +1,12 @@
+{
+  "fe": "fe 26.6.0 (5b3f96a)",
+  "evm_passed": 369,
+  "native_passed": 352,
+  "wasm_passed": 351,
+  "fuzz_rounds": 1000000,
+  "fuzz_seed": 1,
+  "fuzz_true_value": 679,
+  "fuzz_rejected": 999321,
+  "fuzz_wrong_value": 0,
+  "end_to_end": true
+}

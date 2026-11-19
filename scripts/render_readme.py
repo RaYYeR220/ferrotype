@@ -55,6 +55,19 @@ figures = {
     "lido_tx": f"{gas('lido', 'usdc-holder', 'tx_gas'):,}",
 }
 
+tests_file = root / "results" / "tests.json"
+if tests_file.exists():
+    tests = json.loads(tests_file.read_text())
+    figures.update({
+        "evm_tests": str(tests["evm_passed"]),
+        "native_tests": str(tests["native_passed"]),
+        "wasm_checks": str(tests["wasm_passed"]),
+        "fuzz_rounds": f"{tests['fuzz_rounds']:,}",
+        "fuzz_true": f"{tests['fuzz_true_value']:,}",
+        "fuzz_rejected": f"{tests['fuzz_rejected']:,}",
+        "fuzz_wrong": f"{tests['fuzz_wrong_value']:,}",
+    })
+
 readme = root / "README.md"
 text = readme.read_text(encoding="utf-8")
 text = re.sub(
@@ -66,4 +79,4 @@ text = re.sub(
 for name, value in figures.items():
     text = re.sub(rf"<!-- n:{name} -->.*?<!-- /n -->", f"<!-- n:{name} -->{value}<!-- /n -->", text)
 readme.write_text(text, encoding="utf-8", newline="\n")
-print("README.md: gas table and figures rendered from bench/results/gas.json")
+print("README.md: numbers rendered from bench/results/gas.json and results/tests.json")

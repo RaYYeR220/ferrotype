@@ -15,6 +15,7 @@ PY=${PYTHON:-python3}
 "$FE" build -O 2 ingots/contracts --out-dir out
 
 "$FE" build --backend native -O 2 ingots/cli --out-dir target/cli
+"$FE" build --backend native -O 2 ingots/fuzz --out-dir target/fuzz
 mkdir -p target/bin
 cp target/cli/cli target/bin/ferrotype
 echo "Wrote target/bin/ferrotype"

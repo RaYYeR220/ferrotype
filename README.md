@@ -100,9 +100,11 @@ More Fe that carries weight here:
 
 | Target | Command | Result |
 |---|---|---|
-| EVM | `fe test ingots/conformance` | 368 passed |
-| Native | `fe test --backend native ingots/conformance` | 350 passed (the 18 contract tests are EVM-only) |
-| WebAssembly | `node wasm/check.mjs` | 351 checks passed |
+| EVM | `fe test ingots/conformance` | <!-- n:evm_tests -->369<!-- /n --> passed |
+| Native | `fe test --backend native ingots/conformance` | <!-- n:native_tests -->352<!-- /n --> passed (the contract tests are EVM-only; the million-round fuzz test is native-only) |
+| WebAssembly | `node wasm/check.mjs` | <!-- n:wasm_checks -->351<!-- /n --> checks passed |
+
+**Damaged proofs.** [`fuzz.fe`](ingots/conformance/src/fuzz.fe) damages the mainnet proofs at random (bit flips, overwritten bytes, cut tails, removed ranges, appended bytes, one 32-byte window copied over another) and verifies them. Of <!-- n:fuzz_rounds -->1,000,000<!-- /n --> damaged proofs, <!-- n:fuzz_true -->679<!-- /n --> still prove the true value (the damage missed every byte that matters), <!-- n:fuzz_rejected -->999,321<!-- /n --> are rejected, and <!-- n:fuzz_wrong -->0<!-- /n --> prove a wrong value; the verifier never panics. The EVM and native builds reach the same verdict on every one of the first 300 rounds: both fold their verdicts into the same digest (`every_target_reaches_the_same_300_verdicts`). Run it with `fe build --backend native ingots/fuzz --out-dir target/fuzz && target/fuzz/fuzz 1000000 1`.
 
 **Gas.** Execution gas for one read (account proof, then storage proof), on the same real mainnet proofs, measured with Foundry ([`bench/`](bench/README.md)). "unsupported" means the verifier reverts on that valid proof: it cannot prove that case.
 
