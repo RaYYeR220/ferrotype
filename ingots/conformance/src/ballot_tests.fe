@@ -185,7 +185,7 @@ fn executes_only_the_proposed_calldata() uses (evm: mut Evm) {
 fn weight_is_the_proven_usdc_balance() uses (evm: mut Evm) {
     let h = deploy()
     let id = open(h, deadline: 100)
-    // 0x...dEaD held 57,573.374812 USDC at the snapshot block.
+    // 0x...dEaD held 57,575.181148 USDC at the snapshot block.
     let weight: u256 = evm.call(
         addr: h,
         gas: 1000000,
