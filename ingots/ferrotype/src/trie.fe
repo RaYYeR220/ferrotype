@@ -18,9 +18,15 @@ use core::ptr::MemSpan
 use ingot::hash::keccak
 use ingot::rlp::{self, Item}
 
-/// Keccak-256 of the RLP encoding of the empty string: the root of a trie
-/// with no keys.
-pub const EMPTY_TRIE_ROOT: u256 = 0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
+/// The RLP encoding of the empty string, a single byte.
+pub const EMPTY_STRING_RLP: u8 = 0x80
+
+/// The root of a trie with no keys: Keccak-256 of the RLP empty string,
+/// computed by the compiler rather than copied from a specification.
+pub const EMPTY_TRIE_ROOT: u256 = core::keccak([EMPTY_STRING_RLP])
+
+// The value every Ethereum client uses (the Yellow Paper's empty trie root).
+static_assert(EMPTY_TRIE_ROOT == 0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421)
 
 /// Why a proof was rejected.
 pub enum ProofError {

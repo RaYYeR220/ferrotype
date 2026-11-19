@@ -11,8 +11,13 @@ use ingot::hash::{keccak, keccak_address, keccak_words}
 use ingot::rlp::{self, Item}
 use ingot::trie::{self, Lookup, Nodes, ProofError, EMPTY_TRIE_ROOT}
 
-/// Keccak-256 of the empty byte string: the code hash of an account with no code.
-pub const EMPTY_CODE_HASH: u256 = 0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470
+/// The code hash of an account with no code: Keccak-256 of no bytes,
+/// computed by the compiler.
+pub const EMPTY_CODE_HASH: u256 = core::keccak(EMPTY)
+
+const EMPTY: [u8; 0] = []
+
+static_assert(EMPTY_CODE_HASH == 0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470)
 
 /// The hash of a block header, as `BLOCKHASH` and the history contract return it.
 pub struct BlockHash { pub value: u256 }
