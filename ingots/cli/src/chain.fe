@@ -100,15 +100,16 @@ pub fn header_rlp(_ body: MemSpan, _ block: Value) -> Option<MemBuffer> {
     bytes_field(mut payload, body, block, "extraData")?
     bytes_field(mut payload, body, block, "mixHash")?
     bytes_field(mut payload, body, block, "nonce")?
-    // London and later.
-    if int_field(mut payload, body, block, "baseFeePerGas").is_some()
+    // London, Shanghai, Cancun, Prague, then Amsterdam (EIP-7928's block
+    // access list hash and EIP-7843's slot number).
+    let _ = int_field(mut payload, body, block, "baseFeePerGas").is_some()
         && bytes_field(mut payload, body, block, "withdrawalsRoot").is_some()
         && int_field(mut payload, body, block, "blobGasUsed").is_some()
         && int_field(mut payload, body, block, "excessBlobGas").is_some()
         && bytes_field(mut payload, body, block, "parentBeaconBlockRoot").is_some()
-    {
-        let _ = bytes_field(mut payload, body, block, "requestsHash")
-    }
+        && bytes_field(mut payload, body, block, "requestsHash").is_some()
+        && bytes_field(mut payload, body, block, "blockAccessListHash").is_some()
+        && int_field(mut payload, body, block, "slotNumber").is_some()
     var out = list_prefix(payload.len())
     out.extend_from(payload.span())
     Option::Some(out)

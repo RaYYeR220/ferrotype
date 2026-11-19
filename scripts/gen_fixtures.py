@@ -22,6 +22,8 @@ HEADER_FIELDS = [
     ("timestamp", "int"), ("extraData", "bytes"), ("mixHash", "bytes"), ("nonce", "bytes"),
     ("baseFeePerGas", "int"), ("withdrawalsRoot", "bytes"), ("blobGasUsed", "int"),
     ("excessBlobGas", "int"), ("parentBeaconBlockRoot", "bytes"), ("requestsHash", "bytes"),
+    # Amsterdam: EIP-7928 block access list hash, EIP-7843 slot number.
+    ("blockAccessListHash", "bytes"), ("slotNumber", "int"),
 ]
 
 
