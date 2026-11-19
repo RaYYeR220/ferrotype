@@ -164,15 +164,11 @@ pub fn lookup<N: Nodes>(_ buf: MemSpan, nodes: mut N, root: u256, path: u256) ->
             // Otherwise a branch: sixteen children and a value slot. Keys in a
             // secure trie all have the same length, so the value slot is
             // never on the path.
-            match rlp::count(buf, node) {
-                Option::Some(17) => {}
-                _ => { return Result::Err(ProofError::Malformed) }
-            }
             if depth >= 64 {
                 return Result::Err(ProofError::Malformed)
             }
             let nibble: usize = ((path >> ((63 - depth) * 4) as u256) & 0x0f).downcast_truncate()
-            child = match rlp::nth(buf, list: node, index: nibble) {
+            child = match rlp::branch_child(buf, node, index: nibble) {
                 Option::Some(item) => item
                 Option::None => { return Result::Err(ProofError::Malformed) }
             }

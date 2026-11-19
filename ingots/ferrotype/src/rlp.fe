@@ -115,6 +115,42 @@ pub fn nth(_ buf: MemSpan, list: Item, index: usize) -> Option<Item> {
     Option::Some(item)
 }
 
+/// Child `index` of a branch node: `list` must hold exactly seventeen items.
+///
+/// One pass over the items, since a branch is checked whole anyway. Almost
+/// every child is a 32-byte hash (`0xa0` and 32 bytes) or empty (`0x80`), so
+/// those two headers are stepped over without the general decoder.
+pub fn branch_child(_ buf: MemSpan, _ list: Item, index: usize) -> Option<Item> {
+    let end = list.end()
+    var at = list.payload
+    var i: usize = 0
+    var child = Item { start: 0, payload: 0, len: 0, list: false }
+    while i < 17 {
+        if at >= end {
+            return Option::None
+        }
+        let prefix = buf.byte_at(at)
+        var item = Item { start: at, payload: at + 1, len: 0, list: false }
+        if prefix == 0xa0 {
+            if end - at < 33 {
+                return Option::None
+            }
+            item.len = 32
+        } else if prefix != 0x80 {
+            item = item_at(buf, at, limit: end)?
+        }
+        if i == index {
+            child = item
+        }
+        at = item.end()
+        i += 1
+    }
+    if at != end {
+        return Option::None
+    }
+    Option::Some(child)
+}
+
 /// Number of items in `list`; `None` if any item overruns it.
 pub fn count(_ buf: MemSpan, _ list: Item) -> Option<usize> {
     var n: usize = 0
