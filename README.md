@@ -48,14 +48,18 @@ pub fn keccak(_ data: MemSpan) -> u256 {
 }
 ```
 
-The capabilities of every handler are in its signature, checked by the compiler. In `Plebiscite`, only `Execute` holds `mut call`, the capability to send value or make a state-changing call. `Propose` holds `call` read-only, which allows nothing but `STATICCALL` (to read old block hashes from the EIP-2935 contract):
+The capabilities of every handler are in its signature, checked by the compiler: a handler that does not list an effect or a storage field cannot reach it. In `Plebiscite` only `Propose` and `Execute` list `call`, and each hands it to one free function whose own `uses` clause states the mode: `history::block_hash` takes `call: Call`, which allows nothing but `STATICCALL` (to read old block hashes from the EIP-2935 contract), and `pay`, the treasury's only outgoing call, takes `call: mut Call`:
 
 ```fe
 Propose { header, token_proof, supply_proof, target, value, data } -> u256
     uses (ctx, call, token, supply_slot, voting_period, max_snapshot_age, mut ledger, mut log)
 Vote { id, support, balance_proof } -> u256 uses (ctx, layout_kind, balance_slot, mut ledger, mut log)
 Execute { id, data } -> bool uses (ctx, mut call, quorum_bps, mut ledger, mut log)
+
+fn pay(_ target: Address, _ value: Wei, _ data: Bytes) -> bool uses (ctx: Ctx, call: mut Call)
 ```
+
+Calling `pay` from `Vote` is a compile error (`missing effect Call required by pay`). Checking this claim turned up a gap: Fe 26.6 does not check the `mut` marker of a contract-level effect inside a `recv` arm, so an arm that lists `call` without `mut` can still call it mutably. Ferrotype's arms therefore never call `call` themselves; the finding is reported upstream with a minimal reproduction.
 
 And the trie roots are types, so a proof cannot be checked against the wrong trie:
 

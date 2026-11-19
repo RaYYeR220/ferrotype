@@ -9,10 +9,14 @@
 //! proves the token's account, and the account's storage root is kept. From
 //! then on a vote needs only one storage proof: the voter's balance slot.
 //!
-//! What each handler may touch is in its `uses` clause. Only `Execute` holds
-//! `mut call`, the capability to send value or make a state-changing call;
-//! `Propose` holds `call` read-only, which can do nothing but `STATICCALL`
-//! (it asks the history contract for old block hashes).
+//! What each handler may touch is in its `uses` clause: a handler that does
+//! not list an effect or a field cannot reach it. Only `Propose` and `Execute`
+//! list `call`, and each passes it to one free function whose own `uses`
+//! clause the compiler checks: `history::block_hash` takes it read-only, which
+//! allows nothing but `STATICCALL`; `pay`, reached only from `Execute`, takes
+//! it mutably and is the treasury's one outgoing call. (Fe 26.6 does not yet
+//! check the `mut` marker on a contract-level effect inside a `recv` arm, so
+//! the arms do not call `call` themselves.)
 
 use std::abi::Bytes
 use std::evm::{keccak256, wei}
@@ -181,8 +185,7 @@ pub contract Plebiscite uses (ctx: Ctx, call: mut Call, log: mut Log) {
         Execute { id, data } -> bool uses (ctx, mut call, quorum_bps, mut ledger, mut log) {
             // Marked executed before the call, so the call cannot re-enter it.
             let proposal = ballot::settle(id, data_hash: keccak256(data.span()), now: ctx.timestamp(), quorum_bps)
-            let outcome = call.try_call_raw(addr: proposal.target, gas: ctx.gas() - 5000, value: proposal.value, args: data.span())
-            if !outcome.success() {
+            if !pay(proposal.target, proposal.value, data) {
                 refuse(ballot::CALL_FAILED)
             }
             log.emit(Executed { id, target: proposal.target, value: proposal.value })
@@ -218,6 +221,14 @@ pub contract Plebiscite uses (ctx: Ctx, call: mut Call, log: mut Log) {
             (token, layout_kind, balance_slot, supply_slot, voting_period.as_seconds(), quorum_bps, max_snapshot_age)
         }
     }
+}
+
+/// The treasury's one outgoing call: `data` to `target` with `value` attached.
+/// Every call the contract makes goes through a free function like this one
+/// or `history::block_hash`, whose `uses` clause the compiler checks: this one
+/// takes `call` mutably, `block_hash` takes it read-only.
+fn pay(_ target: Address, _ value: Wei, _ data: Bytes) -> bool uses (ctx: Ctx, call: mut Call) {
+    call.try_call_raw(addr: target, gas: ctx.gas() - 5000, value, args: data.span()).success()
 }
 
 /// Proves the token's storage root and total supply at the block `header`
