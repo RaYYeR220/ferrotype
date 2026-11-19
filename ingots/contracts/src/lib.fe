@@ -4,4 +4,5 @@ pub use errors
 pub use history
 pub use ballot
 pub use plebiscite
+pub use demo_token
 pub use reader

@@ -1,0 +1,65 @@
+//! A plain ERC-20 for local runs and tests. It knows nothing about
+//! governance: no checkpoints, no delegation, no snapshot hooks. Its storage
+//! is laid out as a Solidity token's would be (balances mapping at slot 0,
+//! total supply at slot 1), so a Plebiscite reads it with
+//! `BalanceLayout::Solidity(0)` and supply slot 1.
+
+use std::evm::StorageMap
+
+pub msg TokenMsg {
+    #[selector = sol("balanceOf(address)")]
+    BalanceOf { owner: Address } -> u256,
+    #[selector = sol("totalSupply()")]
+    TotalSupply -> u256,
+    #[selector = sol("transfer(address,uint256)")]
+    Transfer { to: Address, amount: u256 } -> bool,
+    #[selector = sol("mint(address,uint256)")]
+    Mint { to: Address, amount: u256 } -> bool,
+}
+
+#[event]
+pub struct Transferred {
+    #[indexed]
+    pub from: Address,
+    #[indexed]
+    pub to: Address,
+    pub amount: u256,
+}
+
+pub contract DemoToken uses (ctx: Ctx, log: mut Log) {
+    mut balances: StorageMap<Address, u256>,
+    mut supply: u256,
+    minter: Address,
+
+    init() uses (ctx, mut minter) {
+        minter = ctx.caller()
+    }
+
+    recv TokenMsg {
+        BalanceOf { owner } -> u256 uses (balances) {
+            balances.get(key: owner)
+        }
+
+        TotalSupply -> u256 uses (supply) {
+            supply
+        }
+
+        Transfer { to, amount } -> bool uses (ctx, mut balances, mut log) {
+            let from = ctx.caller()
+            let have = balances.get(key: from)
+            assert!(have >= amount, "insufficient balance")
+            balances.set(key: from, value: have - amount)
+            balances.set(key: to, value: balances.get(key: to) + amount)
+            log.emit(Transferred { from, to, amount })
+            true
+        }
+
+        Mint { to, amount } -> bool uses (ctx, minter, mut balances, mut supply, mut log) {
+            assert!(ctx.caller() == minter, "only the minter mints")
+            balances.set(key: to, value: balances.get(key: to) + amount)
+            supply += amount
+            log.emit(Transferred { from: Address::zero(), to, amount })
+            true
+        }
+    }
+}

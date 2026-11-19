@@ -51,6 +51,10 @@ pub msg PlebisciteMsg {
     #[selector = sol("execute(uint256,bytes)")]
     Execute { id: u256, data: Bytes } -> bool,
 
+    /// Adds the attached ether to the treasury; returns the new balance.
+    #[selector = sol("deposit()")]
+    Deposit -> u256,
+
     #[selector = sol("hasVoted(uint256,address)")]
     HasVoted { id: u256, voter: Address } -> bool,
 
@@ -183,6 +187,11 @@ pub contract Plebiscite uses (ctx: Ctx, call: mut Call, log: mut Log) {
             }
             log.emit(Executed { id, target: proposal.target, value: proposal.value })
             true
+        }
+
+        #[payable]
+        Deposit -> u256 uses (ctx) {
+            ctx.selfbalance().as_wei()
         }
 
         HasVoted { id, voter } -> bool uses (ledger) {
