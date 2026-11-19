@@ -22,4 +22,6 @@ for name in MODULES:
     # Inner doc comments document a file module; an inline module cannot hold them.
     body = "\n".join(line for line in body.splitlines() if not line.startswith("//!"))
     parts.append(f"pub mod {name} {{\n{body}\n}}\n")
-pathlib.Path(sys.argv[1]).write_text("\n".join(parts), newline="\n")
+out = pathlib.Path(sys.argv[1])
+out.parent.mkdir(parents=True, exist_ok=True)
+out.write_text("\n".join(parts), newline="\n")

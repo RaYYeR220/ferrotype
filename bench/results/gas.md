@@ -12,8 +12,8 @@ Excludes the 21,000 base and calldata.
 | Optimism Bedrock `SecureMerkleTrie` (solc 0.8.37) | 485,328 | 514,491 | — (unsupported) | — (unsupported) | — (unsupported) |
 | Lido `StateProofVerifier` (solc 0.6.12, as audited) | 330,229 | 344,979 | 314,531 | 158,196 | 200,937 |
 | Lido `StateProofVerifier`, 0.8 port (solc 0.8.37) | 551,087 | 572,921 | 523,474 | 263,697 | 340,520 |
-| Ferrotype (Fe), `storageAt` with `bytes[]` | 320,632 | 335,173 | 335,525 | 171,694 | 184,813 |
-| Ferrotype (Fe), `storageAtPacked` | 322,826 | 337,116 | 337,331 | 172,822 | 186,079 |
+| Ferrotype (Fe), `storageAt` with `bytes[]` | 167,272 | 177,758 | 165,702 | 86,726 | 97,478 |
+| Ferrotype (Fe), `storageAtPacked` | 169,380 | 179,618 | 167,426 | 87,805 | 98,699 |
 
 ## Full breakdown
 
@@ -24,28 +24,28 @@ Excludes the 21,000 base and calldata.
 | USDC, blacklisted holder (top bit set) | Optimism Bedrock `SecureMerkleTrie` (solc 0.8.37) | ok | 485,328 | 8,324 | 116,672 | 623,000 |
 | USDC, blacklisted holder (top bit set) | Lido `StateProofVerifier` (solc 0.6.12, as audited) | ok | 330,229 | 8,324 | 116,672 | 467,901 |
 | USDC, blacklisted holder (top bit set) | Lido `StateProofVerifier`, 0.8 port (solc 0.8.37) | ok | 551,087 | 8,324 | 116,672 | 688,759 |
-| USDC, blacklisted holder (top bit set) | Ferrotype (Fe), `storageAt` with `bytes[]` | ok | 320,632 | 8,324 | 116,672 | 458,304 |
-| USDC, blacklisted holder (top bit set) | Ferrotype (Fe), `storageAtPacked` | ok | 322,826 | 7,108 | 111,112 | 454,938 |
+| USDC, blacklisted holder (top bit set) | Ferrotype (Fe), `storageAt` with `bytes[]` | ok | 167,272 | 8,324 | 116,672 | 312,680 |
+| USDC, blacklisted holder (top bit set) | Ferrotype (Fe), `storageAtPacked` | ok | 169,380 | 7,108 | 111,112 | 301,492 |
 | USDC, holder balance | Optimism Bedrock `SecureMerkleTrie` (solc 0.8.37) | ok | 514,491 | 8,548 | 119,632 | 655,123 |
 | USDC, holder balance | Lido `StateProofVerifier` (solc 0.6.12, as audited) | ok | 344,979 | 8,548 | 119,632 | 485,611 |
 | USDC, holder balance | Lido `StateProofVerifier`, 0.8 port (solc 0.8.37) | ok | 572,921 | 8,548 | 119,632 | 713,553 |
-| USDC, holder balance | Ferrotype (Fe), `storageAt` with `bytes[]` | ok | 335,173 | 8,548 | 119,632 | 475,805 |
-| USDC, holder balance | Ferrotype (Fe), `storageAtPacked` | ok | 337,116 | 7,268 | 113,792 | 471,908 |
+| USDC, holder balance | Ferrotype (Fe), `storageAt` with `bytes[]` | ok | 177,758 | 8,548 | 119,632 | 320,080 |
+| USDC, holder balance | Ferrotype (Fe), `storageAtPacked` | ok | 179,618 | 7,268 | 113,792 | 314,410 |
 | WETH, zero slot (storage exclusion) | Optimism Bedrock `SecureMerkleTrie` (solc 0.8.37) | unsupported: MerkleTrie: path remainder must share all nibbles with key | — | 8,228 | 115,712 | — |
 | WETH, zero slot (storage exclusion) | Lido `StateProofVerifier` (solc 0.6.12, as audited) | ok | 314,531 | 8,228 | 115,712 | 451,243 |
 | WETH, zero slot (storage exclusion) | Lido `StateProofVerifier`, 0.8 port (solc 0.8.37) | ok | 523,474 | 8,228 | 115,712 | 660,186 |
-| WETH, zero slot (storage exclusion) | Ferrotype (Fe), `storageAt` with `bytes[]` | ok | 335,525 | 8,228 | 115,712 | 472,237 |
-| WETH, zero slot (storage exclusion) | Ferrotype (Fe), `storageAtPacked` | ok | 337,331 | 7,012 | 110,152 | 468,483 |
+| WETH, zero slot (storage exclusion) | Ferrotype (Fe), `storageAt` with `bytes[]` | ok | 165,702 | 8,228 | 115,712 | 310,280 |
+| WETH, zero slot (storage exclusion) | Ferrotype (Fe), `storageAtPacked` | ok | 167,426 | 7,012 | 110,152 | 298,578 |
 | Absent account (state exclusion) | Optimism Bedrock `SecureMerkleTrie` (solc 0.8.37) | unsupported: MerkleTrie: ran out of proof elements | — | 4,548 | 63,672 | — |
 | Absent account (state exclusion) | Lido `StateProofVerifier` (solc 0.6.12, as audited) | ok | 158,196 | 4,548 | 63,672 | 242,868 |
 | Absent account (state exclusion) | Lido `StateProofVerifier`, 0.8 port (solc 0.8.37) | ok | 263,697 | 4,548 | 63,672 | 348,369 |
-| Absent account (state exclusion) | Ferrotype (Fe), `storageAt` with `bytes[]` | ok | 171,694 | 4,548 | 63,672 | 256,366 |
-| Absent account (state exclusion) | Ferrotype (Fe), `storageAtPacked` | ok | 172,822 | 3,940 | 60,904 | 254,726 |
+| Absent account (state exclusion) | Ferrotype (Fe), `storageAt` with `bytes[]` | ok | 86,726 | 4,548 | 63,672 | 180,180 |
+| Absent account (state exclusion) | Ferrotype (Fe), `storageAtPacked` | ok | 87,805 | 3,940 | 60,904 | 173,260 |
 | EOA, empty storage root | Optimism Bedrock `SecureMerkleTrie` (solc 0.8.37) | unsupported: MerkleTrie: ran out of proof elements | — | 4,740 | 65,544 | — |
 | EOA, empty storage root | Lido `StateProofVerifier` (solc 0.6.12, as audited) | ok | 200,937 | 4,740 | 65,544 | 287,481 |
 | EOA, empty storage root | Lido `StateProofVerifier`, 0.8 port (solc 0.8.37) | ok | 340,520 | 4,740 | 65,544 | 427,064 |
-| EOA, empty storage root | Ferrotype (Fe), `storageAt` with `bytes[]` | ok | 184,813 | 4,740 | 65,544 | 271,357 |
-| EOA, empty storage root | Ferrotype (Fe), `storageAtPacked` | ok | 186,079 | 4,068 | 62,472 | 269,551 |
+| EOA, empty storage root | Ferrotype (Fe), `storageAt` with `bytes[]` | ok | 97,478 | 4,740 | 65,544 | 184,860 |
+| EOA, empty storage root | Ferrotype (Fe), `storageAtPacked` | ok | 98,699 | 4,068 | 62,472 | 182,171 |
 
 ## Broken proofs
 
