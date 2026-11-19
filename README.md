@@ -123,7 +123,7 @@ More Fe that carries weight here:
 | **Ferrotype**, packed proofs | 180,143 | 169,889 | 167,935 | 88,183 | 99,093 |
 <!-- gas:end -->
 
-Absence proofs cost <!-- n:vs_lido_absent -->47%<!-- /n --> less than Lido's. Counting calldata, a full read transaction costs <!-- n:fe_tx -->314,935<!-- /n --> gas with packed proofs against <!-- n:lido_tx -->485,611<!-- /n --> for Lido's.
+Absence proofs cost <!-- n:vs_lido_absent -->47%<!-- /n --> less than Lido's. Among the verifiers that reject a proof that stops early, Ferrotype costs <!-- n:vs_curve -->70%<!-- /n --> less than Curve's patched one and <!-- n:vs_op -->65%<!-- /n --> less than Optimism's, which cannot prove absence at all. Counting calldata, a full read transaction costs <!-- n:fe_tx -->314,935<!-- /n --> gas with packed proofs against <!-- n:lido_tx -->485,611<!-- /n --> for Lido's.
 
 **Soundness.** Of the three verifiers, Ferrotype is the only one that proves absence and rejects a proof whose node list stops early (`bench/results/soundness.json`). The benchmark reproduces this publicly disclosed bug class on real proofs, with Curve's patched verifier as a control. The reference `@ethereumjs/trie` `verifyProof` accepts 12 of the 20 structurally malformed vectors and ignores unused nodes; Ferrotype rejects all of them with the expected reason.
 

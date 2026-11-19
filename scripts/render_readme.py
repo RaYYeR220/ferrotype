@@ -52,6 +52,7 @@ figures = {
     "vs_lido": f"{round(100 * (1 - fe / gas('lido', 'usdc-holder')))}%",
     "vs_op": f"{round(100 * (1 - fe / gas('optimism', 'usdc-holder')))}%",
     "vs_lido_absent": f"{round(100 * (1 - gas('ferrotype', 'weth-zero-slot') / gas('lido', 'weth-zero-slot')))}%",
+    "vs_curve": f"{round(100 * (1 - fe / gas('curve-xdao', 'usdc-holder')))}%",
     "fe_tx": f"{gas('ferrotype-packed', 'usdc-holder', 'tx_gas'):,}",
     "lido_tx": f"{gas('lido', 'usdc-holder', 'tx_gas'):,}",
 }
