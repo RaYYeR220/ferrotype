@@ -9,7 +9,7 @@
 use core::ptr::MemSpan
 use ingot::hash::{keccak, keccak_address, keccak_words}
 use ingot::rlp::{self, Item}
-use ingot::trie::{self, Lookup, Nodes, ProofError, EMPTY_TRIE_ROOT}
+use ingot::trie::{self, Lookup, Nodes, Observer, ProofError, EMPTY_TRIE_ROOT}
 
 /// The code hash of an account with no code: Keccak-256 of no bytes,
 /// computed by the compiler.
@@ -131,6 +131,24 @@ pub fn account<N: Nodes>(_ buf: MemSpan, nodes: mut N, root: StateRoot, address:
 /// storage proof `nodes`. An absent slot holds zero.
 pub fn storage<N: Nodes>(_ buf: MemSpan, nodes: mut N, root: StorageRoot, slot: u256) -> Result<ProofError, u256> {
     match trie::lookup(buf, nodes: mut nodes, root: root.value, path: slot_path(slot)) {
+        Result::Ok(Lookup::Absent) => Result::Ok(0)
+        Result::Ok(Lookup::Found(value)) => decode_slot(buf, value)
+        Result::Err(e) => Result::Err(e)
+    }
+}
+
+/// `account`, reporting each node of the state proof to `observer`.
+pub fn account_observed<N: Nodes, O: Observer>(_ buf: MemSpan, nodes: mut N, root: StateRoot, address: Address, observer: mut O) -> Result<ProofError, Account> {
+    match trie::lookup_observed(buf, nodes: mut nodes, root: root.value, path: account_path(address), observer: mut observer) {
+        Result::Ok(Lookup::Absent) => Result::Ok(Account::empty())
+        Result::Ok(Lookup::Found(value)) => decode_account(buf, value)
+        Result::Err(e) => Result::Err(e)
+    }
+}
+
+/// `storage`, reporting each node of the storage proof to `observer`.
+pub fn storage_observed<N: Nodes, O: Observer>(_ buf: MemSpan, nodes: mut N, root: StorageRoot, slot: u256, observer: mut O) -> Result<ProofError, u256> {
+    match trie::lookup_observed(buf, nodes: mut nodes, root: root.value, path: slot_path(slot), observer: mut observer) {
         Result::Ok(Lookup::Absent) => Result::Ok(0)
         Result::Ok(Lookup::Found(value)) => decode_slot(buf, value)
         Result::Err(e) => Result::Err(e)

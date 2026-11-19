@@ -42,7 +42,9 @@ export async function loadFerrotype(bytes) {
   const ex = instance.exports;
 
   // Calls export `name` with `args` (strings become texts, numbers stay
-  // scalars) and reads `words` words of the record it replies with.
+  // scalars) and reads `words` words of the record it replies with. `words`
+  // may be a function of the record's first words, for records whose length
+  // they state.
   function call(name, words, ...args) {
     const mark = ex.arena_mark();
     try {
@@ -61,11 +63,11 @@ export async function loadFerrotype(bytes) {
       const tag = Number(reply & 0xffffffffn);
       const payload = Number(reply >> 32n);
       if (tag !== 0) throw new ProofRejected(tag);
-      const out = [];
       const mem = new Uint8Array(ex.memory.buffer);
-      for (let i = 0; i < words; i++) {
-        out.push(hexWord(mem.subarray(payload + i * 32, payload + (i + 1) * 32)));
-      }
+      const word = (i) => hexWord(mem.subarray(payload + i * 32, payload + (i + 1) * 32));
+      const count = typeof words === "function" ? words(word) : words;
+      const out = [];
+      for (let i = 0; i < count; i++) out.push(word(i));
       return out;
     } finally {
       ex.arena_release(mark);
@@ -87,6 +89,30 @@ export async function loadFerrotype(bytes) {
         join(storageProof),
       );
       return { value, storageRoot, balance, nonce, exists: BigInt(exists) === 1n };
+    },
+
+    /**
+     * `readStorage`, plus the verifier's own steps: every node it accepted, in
+     * order, as `{ trie: "state" | "storage", depth, offset, length, kind, inline }`.
+     */
+    traceStorage({ stateRoot, account, slot, accountProof, storageProof }) {
+      const words = call(
+        "trace_storage",
+        (word) => 6 + 6 * Number(BigInt(word(5))),
+        stateRoot,
+        account,
+        slot,
+        join(accountProof),
+        join(storageProof),
+      );
+      const [value, storageRoot, balance, nonce, exists, count] = words;
+      const kinds = ["branch", "extension", "leaf"];
+      const steps = [];
+      for (let i = 0; i < Number(BigInt(count)); i++) {
+        const [trie, depth, offset, length, kind, inline] = words.slice(6 + 6 * i, 12 + 6 * i).map((w) => Number(BigInt(w)));
+        steps.push({ trie: trie === 0 ? "state" : "storage", depth, offset, length, kind: kinds[kind], inline: inline === 1 });
+      }
+      return { value, storageRoot, balance, nonce, exists: BigInt(exists) === 1n, steps };
     },
 
     /** Decodes an RLP block header and hashes it. */

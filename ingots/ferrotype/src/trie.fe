@@ -82,9 +82,43 @@ struct Want {
 
 impl Copy for Want {}
 
+/// What kind of node a lookup passed through.
+pub const BRANCH: u8 = 0
+pub const EXTENSION: u8 = 1
+pub const LEAF: u8 = 2
+
+/// Watches a lookup node by node. The verifier reports every node it has
+/// accepted (hashed or embedded, and well formed); watching changes nothing
+/// about the verdict. The browser build uses it to show the verifier's own
+/// steps; everywhere else `Quiet` watches, and compiles to nothing.
+pub trait Observer {
+    /// Whether this observer watches at all. A lookup with an observer that
+    /// does not skips every report at compile time.
+    const WATCHING: bool
+
+    /// A node at `depth` nibbles into the path, held in `buf[start..start + len]`.
+    /// `kind` is `BRANCH`, `EXTENSION` or `LEAF`; `inline` is true for a node
+    /// embedded in its parent rather than referenced by hash.
+    fn node(mut self, depth: usize, start: usize, len: usize, kind: u8, inline: bool)
+}
+
+/// The observer that watches nothing.
+pub struct Quiet {}
+
+impl Observer for Quiet {
+    const WATCHING: bool = false
+    fn node(mut self, depth: usize, start: usize, len: usize, kind: u8, inline: bool) {}
+}
+
 /// Looks `path` (the Keccak-256 hash of the key) up in the trie with root
 /// `root`, using the proof nodes `nodes` read from `buf`.
 pub fn lookup<N: Nodes>(_ buf: MemSpan, nodes: mut N, root: u256, path: u256) -> Result<ProofError, Lookup> {
+    var quiet = Quiet {}
+    lookup_observed(buf, nodes: mut nodes, root, path, observer: mut quiet)
+}
+
+/// `lookup`, reporting each accepted node to `observer`.
+pub fn lookup_observed<N: Nodes, O: Observer>(_ buf: MemSpan, nodes: mut N, root: u256, path: u256, observer: mut O) -> Result<ProofError, Lookup> {
     var want = Want { inline: false, hash: root, at: 0, len: 0 }
     var depth: usize = 0
     loop {
@@ -140,6 +174,9 @@ pub fn lookup<N: Nodes>(_ buf: MemSpan, nodes: mut N, root: u256, path: u256) ->
             }
             let leaf = flag >= 2
             let odd = (flag & 1) == 1
+            if O::WATCHING {
+                observer.node(depth, start: node.start, len: node.encoded_len(), kind: if leaf { LEAF } else { EXTENSION }, inline: want.inline)
+            }
             // An even path pads the flag byte with a zero nibble.
             if !odd && (buf.byte_at(first.payload) & 0x0f) != 0 {
                 return Result::Err(ProofError::Malformed)
@@ -177,6 +214,9 @@ pub fn lookup<N: Nodes>(_ buf: MemSpan, nodes: mut N, root: u256, path: u256) ->
             child = match rlp::branch_child(buf, node, index: nibble) {
                 Option::Some(item) => item
                 Option::None => { return Result::Err(ProofError::Malformed) }
+            }
+            if O::WATCHING {
+                observer.node(depth, start: node.start, len: node.encoded_len(), kind: BRANCH, inline: want.inline)
             }
             depth += 1
             if !child.list && child.len == 0 {

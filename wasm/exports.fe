@@ -17,7 +17,7 @@ use ingot::nodes::Packed
 use ingot::rlp
 use ingot::slots::BalanceLayout
 use ingot::state::{self, StateRoot}
-use ingot::trie::{self, Lookup, ProofError}
+use ingot::trie::{self, Lookup, Observer, ProofError}
 
 const BAD_HEX: u32 = 20
 const BAD_HEADER: u32 = 21
@@ -58,6 +58,79 @@ pub fn read_storage(state_root: HostText, account: HostText, slot: HostText, acc
     }
     let exists: u256 = if proven.exists { 1 } else { 0 }
     record([value, proven.storage_root.value, proven.balance, proven.nonce, exists])
+}
+
+/// `read_storage`, with the verifier's own steps. The record is the five words
+/// of `read_storage`, the number of steps, then six words per step: the trie
+/// (0 the state trie, 1 the account's storage trie), the depth in nibbles,
+/// the node's offset and length in its proof, its kind (0 branch, 1
+/// extension, 2 leaf) and 1 if it was embedded in its parent.
+pub fn trace_storage(state_root: HostText, account: HostText, slot: HostText, account_proof: HostText, storage_proof: HostText) -> Reply {
+    let root = match word(state_root) {
+        Option::Some(w) => w
+        Option::None => { return Reply::error(BAD_HEX) }
+    }
+    let who = match word(account) {
+        Option::Some(w) => Address::new(w)
+        Option::None => { return Reply::error(BAD_HEX) }
+    }
+    let key = match word(slot) {
+        Option::Some(w) => w
+        Option::None => { return Reply::error(BAD_HEX) }
+    }
+    let a = match bytes(account_proof) {
+        Option::Some(b) => b
+        Option::None => { return Reply::error(BAD_HEX) }
+    }
+    let s = match bytes(storage_proof) {
+        Option::Some(b) => b
+        Option::None => { return Reply::error(BAD_HEX) }
+    }
+    var steps = Recorder { trie: 0, count: 0, words: MemBuffer::empty() }
+    var account_nodes = Packed::new(start: 0, len: a.len())
+    let proven = match state::account_observed(a.span(), nodes: mut account_nodes, root: StateRoot { value: root }, address: who, observer: mut steps) {
+        Result::Ok(found) => found
+        Result::Err(e) => { return Reply::error(code(e)) }
+    }
+    steps.trie = 1
+    var slot_nodes = Packed::new(start: 0, len: s.len())
+    let value = match state::storage_observed(s.span(), nodes: mut slot_nodes, root: proven.storage_root, slot: key, observer: mut steps) {
+        Result::Ok(v) => v
+        Result::Err(e) => { return Reply::error(code(e)) }
+    }
+    let exists: u256 = if proven.exists { 1 } else { 0 }
+    var out = MemBuffer::new(6 * 32)
+    out.span().write_word(offset: 0, value: value)
+    out.span().write_word(offset: 32, value: proven.storage_root.value)
+    out.span().write_word(offset: 64, value: proven.balance)
+    out.span().write_word(offset: 96, value: proven.nonce)
+    out.span().write_word(offset: 128, value: exists)
+    out.span().write_word(offset: 160, value: steps.count as u256)
+    out.extend_from(steps.words.span())
+    let addr: u32 = (out.ptr() as usize).downcast().unwrap()
+    core::mem::forget(out)
+    Reply::ok(addr)
+}
+
+// Collects the verifier's steps as words.
+struct Recorder {
+    trie: u256,
+    count: usize,
+    words: MemBuffer,
+}
+
+impl Observer for Recorder {
+    const WATCHING: bool = true
+
+    fn node(mut self, depth: usize, start: usize, len: usize, kind: u8, inline: bool) {
+        self.words.extend_from_word(self.trie, len: 32)
+        self.words.extend_from_word(depth as u256, len: 32)
+        self.words.extend_from_word(start as u256, len: 32)
+        self.words.extend_from_word(len as u256, len: 32)
+        self.words.extend_from_word(kind as u256, len: 32)
+        self.words.extend_from_word(if inline { 1 } else { 0 }, len: 32)
+        self.count += 1
+    }
 }
 
 /// Decodes a block header. The record is four words: the header's hash, its

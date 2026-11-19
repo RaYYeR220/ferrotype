@@ -2,8 +2,8 @@
   "manifest_version": 1,
   "module": {
     "file": "ferrotype.wasm",
-    "sha256": "1f178760c6f1820882b49ef371ed29d062df1c21befad7b2fedd966830a75f9b",
-    "size": 60629,
+    "sha256": "e17685bdcc776828e6cbff3cf6b238f809529d3f522d88a20fd91a86fac1b162",
+    "size": 98354,
     "initial_memory_pages": 18
   },
   "contract_version": 1,
@@ -121,6 +121,41 @@
     },
     {
       "name": "read_storage",
+      "kind": "function",
+      "params": [
+        {
+          "name": "state_root",
+          "type": "HostText",
+          "wasm": ["i32", "i32"]
+        },
+        {
+          "name": "account",
+          "type": "HostText",
+          "wasm": ["i32", "i32"]
+        },
+        {
+          "name": "slot",
+          "type": "HostText",
+          "wasm": ["i32", "i32"]
+        },
+        {
+          "name": "account_proof",
+          "type": "HostText",
+          "wasm": ["i32", "i32"]
+        },
+        {
+          "name": "storage_proof",
+          "type": "HostText",
+          "wasm": ["i32", "i32"]
+        }
+      ],
+      "result": {
+        "type": "Reply",
+        "wasm": ["i64"]
+      }
+    },
+    {
+      "name": "trace_storage",
       "kind": "function",
       "params": [
         {

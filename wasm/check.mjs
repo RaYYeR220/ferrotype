@@ -60,6 +60,19 @@ for (const file of fs.readdirSync(path.join(root, "fixtures/mainnet"))) {
     });
     check(`${file} slot ${s.key.slice(0, 10)}`, BigInt(r.value) === BigInt(s.value));
     check(`${file} balance`, BigInt(r.balance) === BigInt(d.proof.balance));
+    // The traced read proves the same value and reports one step per node it accepted.
+    const t = fe.traceStorage({
+      stateRoot: header.stateRoot,
+      account: d.proof.address,
+      slot: s.key,
+      accountProof: d.proof.accountProof,
+      storageProof: s.proof,
+    });
+    const stateSteps = t.steps.filter((x) => x.trie === "state").length;
+    const storageSteps = t.steps.filter((x) => x.trie === "storage").length;
+    check(`${file} trace value`, BigInt(t.value) === BigInt(s.value));
+    check(`${file} trace steps`, stateSteps >= d.proof.accountProof.length && storageSteps >= s.proof.length,
+      `${stateSteps}/${d.proof.accountProof.length} ${storageSteps}/${s.proof.length}`);
   }
 }
 
