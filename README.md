@@ -1,6 +1,6 @@
 # Ferrotype
 
-**Pitch:** Ferrotype lets a contract read any other contract's storage at a past block, trustlessly, for <!-- n:fe_gas -->177,758<!-- /n --> gas — <!-- n:vs_lido -->48%<!-- /n --> less than Lido's audited verifier and <!-- n:vs_op -->65%<!-- /n --> less than Optimism's — with one Fe codebase that runs on-chain, in a native CLI and in the browser.
+**Pitch:** Ferrotype lets a contract read any other contract's storage at a past block, trustlessly, for <!-- n:fe_gas -->178,012<!-- /n --> gas — <!-- n:vs_lido -->48%<!-- /n --> less than Lido's audited verifier and <!-- n:vs_op -->65%<!-- /n --> less than Optimism's — with one Fe codebase that runs on-chain, in a native CLI and in the browser.
 
 A DAO wants USDC holders to vote on its treasury. USDC has no checkpoints and never will: no one upgrades a $75B token for one DAO. Today the answer is an off-chain snapshot server that everyone has to trust. With Ferrotype the DAO reads each voter's balance straight out of USDC's storage at the proposal's block, proven against the block hash the chain itself remembers. The token cooperates without knowing it.
 
@@ -106,7 +106,7 @@ More Fe that carries weight here:
 |---|---|---|
 | EVM | `fe test ingots/conformance` | <!-- n:evm_tests -->369<!-- /n --> passed |
 | Native | `fe test --backend native ingots/conformance` | <!-- n:native_tests -->352<!-- /n --> passed (the contract tests are EVM-only; the million-round fuzz test is native-only) |
-| WebAssembly | `node wasm/check.mjs` | <!-- n:wasm_checks -->351<!-- /n --> checks passed |
+| WebAssembly | `node wasm/check.mjs` | <!-- n:wasm_checks -->361<!-- /n --> checks passed (the vectors, the mainnet reads, and the traced reads) |
 
 **Damaged proofs.** [`fuzz.fe`](ingots/conformance/src/fuzz.fe) damages the mainnet proofs at random (bit flips, overwritten bytes, cut tails, removed ranges, appended bytes, one 32-byte window copied over another) and verifies them. Of <!-- n:fuzz_rounds -->1,000,000<!-- /n --> damaged proofs, <!-- n:fuzz_true -->679<!-- /n --> still prove the true value (the damage missed every byte that matters), <!-- n:fuzz_rejected -->999,321<!-- /n --> are rejected, and <!-- n:fuzz_wrong -->0<!-- /n --> prove a wrong value; the verifier never panics. The EVM and native builds reach the same verdict on every one of the first 300 rounds: both fold their verdicts into the same digest (`every_target_reaches_the_same_300_verdicts`). Run it with `fe build --backend native ingots/fuzz --out-dir target/fuzz && target/fuzz/fuzz 1000000 1`.
 
@@ -118,11 +118,11 @@ More Fe that carries weight here:
 | Optimism Bedrock `SecureMerkleTrie` (audited) | 514,491 | 485,328 | unsupported | unsupported | unsupported |
 | Lido `StateProofVerifier` (audited, solc 0.6.12) | 344,979 | 330,229 | 314,531 | 158,196 | 200,937 |
 | Lido `StateProofVerifier`, solc 0.8 port | 572,921 | 551,087 | 523,474 | 263,697 | 340,520 |
-| **Ferrotype**, `bytes[]` proofs | 177,758 | 167,272 | 165,702 | 86,726 | 97,478 |
-| **Ferrotype**, packed proofs | 179,618 | 169,380 | 167,426 | 87,805 | 98,699 |
+| **Ferrotype**, `bytes[]` proofs | 178,012 | 167,526 | 165,956 | 86,971 | 97,723 |
+| **Ferrotype**, packed proofs | 179,871 | 169,633 | 167,679 | 88,050 | 98,944 |
 <!-- gas:end -->
 
-Absence proofs cost <!-- n:vs_lido_absent -->47%<!-- /n --> less than Lido's. Counting calldata, a full read transaction costs <!-- n:fe_tx -->314,410<!-- /n --> gas with packed proofs against <!-- n:lido_tx -->485,611<!-- /n --> for Lido's.
+Absence proofs cost <!-- n:vs_lido_absent -->47%<!-- /n --> less than Lido's. Counting calldata, a full read transaction costs <!-- n:fe_tx -->314,663<!-- /n --> gas with packed proofs against <!-- n:lido_tx -->485,611<!-- /n --> for Lido's.
 
 **Soundness.** Of the three verifiers, Ferrotype is the only one that proves absence and rejects a proof whose node list stops early (`bench/results/soundness.json`). The reference `@ethereumjs/trie` `verifyProof` accepts 12 of the 21 structurally malformed vectors and ignores unused nodes; Ferrotype rejects all of them with the expected reason.
 
@@ -133,8 +133,11 @@ Absence proofs cost <!-- n:vs_lido_absent -->47%<!-- /n --> less than Lido's. Co
 | Branch nodes decoded in one pass, instead of counting the 17 items and then skipping to the child | −47% |
 | `-O 2` instead of the default `-O 1` | −0.5% |
 | `#[arithmetic(unchecked)]` on the two hot RLP functions | −1.0% (not used: checked arithmetic stays) |
+| A generic `Observer` on the lookup (the browser shows the verifier's own steps), called on a no-op observer | +1.5% |
+| The same observer behind an associated `const WATCHING: bool` that is `false` for the no-op | +0.14% (shipped) |
+| `#[inline(always)]` on the `lookup` wrapper as well | +0.2% more (not used) |
 
-Bounds-checked span reads, `Option`/`Result` everywhere and typed roots cost little next to the algorithm; the library has no `unsafe` at all, so depending on it needs no `allow_unsafe`.
+A trait method called on every node is not free even when its body is empty; gating it on an associated constant lets the compiler fold the call away. Bounds-checked span reads, `Option`/`Result` everywhere and typed roots cost little next to the algorithm; the library has no `unsafe` at all, so depending on it needs no `allow_unsafe`.
 
 ## Build and test
 
