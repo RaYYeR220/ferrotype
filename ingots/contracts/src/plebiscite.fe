@@ -57,6 +57,11 @@ pub msg PlebisciteMsg {
     #[selector = sol("proposalCount()")]
     ProposalCount -> u256,
 
+    /// `(block, storageRoot, supply)`: the token state proposal `id` counts
+    /// votes against. A voter's balance proof must lead to `storageRoot`.
+    #[selector = sol("snapshot(uint256)")]
+    SnapshotOf { id: u256 } -> (u256, u256, u256),
+
     /// `(votesFor, votesAgainst, supply, deadline, snapshotBlock, executed)`.
     #[selector = sol("tally(uint256)")]
     Tally { id: u256 } -> (u256, u256, u256, u256, u256, bool),
@@ -186,6 +191,11 @@ pub contract Plebiscite uses (ctx: Ctx, call: mut Call, log: mut Log) {
 
         ProposalCount -> u256 uses (ledger) {
             ledger.count
+        }
+
+        SnapshotOf { id } -> (u256, u256, u256) uses (ledger) {
+            let p = ballot::get(id)
+            (p.snapshot_block, p.storage_root, p.supply)
         }
 
         Tally { id } -> (u256, u256, u256, u256, u256, bool) uses (ledger) {

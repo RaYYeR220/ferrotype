@@ -1,0 +1,70 @@
+//! A JSON-RPC client for an Ethereum node.
+//!
+//! Requests go out through `curl`, started as a child process: Fe's native
+//! standard library runs programs through the `Spawn` capability, so every
+//! function that touches the network says so in its `uses` clause, and
+//! nothing else in the program can. HTTPS, proxies and redirects are curl's.
+
+use core::ptr::{MemBuffer, MemSpan}
+use std::io::Display
+use std::process::{Command, Input, Redirect, Spawn}
+use std::time::Duration
+use ingot::json::{self, Value}
+
+/// A node's answer: the whole response body and where its `result` lies.
+pub struct Response {
+    pub body: MemBuffer,
+    pub result: Value,
+}
+
+/// Calls `method` with the JSON `params` (an array's text) on the node at `url`.
+pub fn call<U: Display, M: Display, P: Display>(_ url: U, _ method: M, _ params: P) -> Result<MemBuffer, Response>
+    uses (proc: mut Spawn)
+{
+    let request = format!("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"", method, "\",\"params\":", params, "}")
+    let command = Command::new("curl")
+        .arg("--silent")
+        .arg("--show-error")
+        .arg("--fail-with-body")
+        .arg("--request")
+        .arg("POST")
+        .arg("--header")
+        .arg("content-type: application/json")
+        .arg("--user-agent")
+        .arg("ferrotype")
+        .arg("--data-binary")
+        .arg("@-")
+        .arg(url)
+        .stdin(Input::Bytes(request))
+        .stdout(Redirect::Capture)
+        .stderr(Redirect::Capture)
+        .timeout(Duration::from_secs(60))
+    let output = match proc.output(command) {
+        Result::Ok(output) => output
+        Result::Err(e) => { return Result::Err(format!("cannot run curl: ", e)) }
+    }
+    if !output.status.success() {
+        return Result::Err(format!("request to the node failed: ", output.stderr, output.stdout))
+    }
+    let body = output.stdout
+    let root = match json::parse(body.span()) {
+        Option::Some(root) => root
+        Option::None => { return Result::Err(format!("the node did not answer with JSON: ", body)) }
+    }
+    match json::get(body.span(), root, "error") {
+        Option::Some(error) => {
+            let text = MemBuffer::from_span(body.span().slice(offset: error.start, len: error.end - error.start))
+            return Result::Err(format!(method, " failed: ", text))
+        }
+        Option::None => {}
+    }
+    match json::get(body.span(), root, "result") {
+        Option::Some(result) => Result::Ok(Response { body, result })
+        Option::None => Result::Err(format!("the node's answer has no result: ", body))
+    }
+}
+
+/// The text of a string value, as a buffer of its own.
+pub fn text(_ body: MemSpan, _ value: Value) -> MemBuffer {
+    MemBuffer::from_span(value.text(body))
+}

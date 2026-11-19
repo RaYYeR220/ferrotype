@@ -1,0 +1,104 @@
+//! `ferrotype verify FILE.json`: check a saved proof without a network.
+//!
+//! The file holds a block (`eth_getBlockByNumber`) and a proof
+//! (`eth_getProof`), as `{"block": ..., "proof": ...}`. The header is rebuilt
+//! and must hash to the block's hash; then the account and every storage slot
+//! are proven against it, and each proven value must equal the value the file
+//! claims.
+
+use core::ptr::{MemBuffer, MemSpan}
+use std::env::Args
+use std::fs::Fs
+use std::io::Stdout
+use ferrotype::nodes::Packed
+use ferrotype::state
+use ingot::chain
+use ingot::hex
+use ingot::json::{self, Value}
+
+pub fn verify_file() -> Result<MemBuffer, ()> uses (args: Args, out: mut Stdout, fs: Fs) {
+    if args.count() < 3 {
+        return Result::Err(format!("usage: ferrotype verify FILE.json"))
+    }
+    let path = args.get(2)
+    let text = match fs.read(path) {
+        Result::Ok(t) => t
+        Result::Err(e) => { return Result::Err(format!("cannot read ", path, ": ", e)) }
+    }
+    let body = text.span()
+    let root = match json::parse(body) {
+        Option::Some(r) => r
+        Option::None => { return Result::Err(format!(path, " is not JSON")) }
+    }
+    let block = field(body, root, "block")?
+    let proof = field(body, root, "proof")?
+
+    let rlp = match chain::header_rlp(body, block) {
+        Option::Some(r) => r
+        Option::None => { return Result::Err(format!("the block's header fields are not hex")) }
+    }
+    let header = match state::header(rlp.span(), at: 0, len: rlp.len()) {
+        Option::Some(h) => h
+        Option::None => { return Result::Err(format!("the block does not decode as a header")) }
+    }
+    let claimed_hash = chain::word_field(body, block, "hash").unwrap_or(default: 0)
+    if header.hash.value != claimed_hash {
+        return Result::Err(format!("the header hashes to ", hex::word(header.hash.value), ", not to the block hash ", hex::word(claimed_hash)))
+    }
+    println!("block    ", header.number, " ", hex::word(header.hash.value), " (header hash checked)")
+
+    let address = match json::get(body, proof, "address") {
+        Option::Some(v) => match std::evm::parse_address(v.text(body)) {
+            Option::Some(a) => a
+            Option::None => { return Result::Err(format!("the proof's address is not an address")) }
+        }
+        Option::None => { return Result::Err(format!("the proof has no address")) }
+    }
+    let account_nodes = nodes(body, field(body, proof, "accountProof")?)?
+    var cursor = Packed::new(start: 0, len: account_nodes.len())
+    let account = match state::account(account_nodes.span(), nodes: mut cursor, root: header.state_root, address) {
+        Result::Ok(a) => a
+        Result::Err(e) => { return Result::Err(format!("account proof rejected: ", ingot::reason(e))) }
+    }
+    println!("account  ", hex::address(address), if account.exists { "" } else { " (does not exist)" })
+    println!("balance  ", account.balance, " wei, nonce ", account.nonce)
+
+    let slots = field(body, proof, "storageProof")?
+    var i: usize = 0
+    loop {
+        let entry = match json::at(body, slots, i) {
+            Option::Some(e) => e
+            Option::None => { break }
+        }
+        let key = chain::word_field(body, entry, "key").unwrap_or(default: 0)
+        let claimed = chain::word_field(body, entry, "value").unwrap_or(default: 0)
+        let slot_nodes = nodes(body, field(body, entry, "proof")?)?
+        var slot_cursor = Packed::new(start: 0, len: slot_nodes.len())
+        match state::storage(slot_nodes.span(), nodes: mut slot_cursor, root: account.storage_root, slot: key) {
+            Result::Ok(value) => {
+                if value != claimed {
+                    return Result::Err(format!("slot ", hex::word(key), " is proven to hold ", hex::word(value), ", not ", hex::word(claimed)))
+                }
+                println!("slot     ", hex::word(key), " = ", hex::word(value), " proven")
+            }
+            Result::Err(e) => { return Result::Err(format!("storage proof for ", hex::word(key), " rejected: ", ingot::reason(e))) }
+        }
+        i += 1
+    }
+    println!("ok")
+    Result::Ok(())
+}
+
+fn field<const N: usize>(_ body: MemSpan, _ object: Value, _ name: String<N>) -> Result<MemBuffer, Value> {
+    match json::get(body, object, name) {
+        Option::Some(v) => Result::Ok(v)
+        Option::None => Result::Err(format!("missing field ", name))
+    }
+}
+
+fn nodes(_ body: MemSpan, _ list: Value) -> Result<MemBuffer, MemBuffer> {
+    match chain::packed(body, list) {
+        Option::Some(n) => Result::Ok(n)
+        Option::None => Result::Err(format!("a proof node is not hex"))
+    }
+}

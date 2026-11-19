@@ -1,0 +1,332 @@
+//! A small JSON (RFC 8259) reader that works in place.
+//!
+//! `parse` checks a whole document and returns its root value as a range of
+//! the buffer; `get` and `at` find members and elements by skipping over the
+//! values before them. Nothing is copied and nothing is allocated, so reading
+//! one field of a large JSON-RPC response costs one pass over the bytes before
+//! it. Strings are returned as the range between their quotes; the readers
+//! here only need hex strings and keys, so escapes are checked but not decoded.
+
+use core::ptr::MemSpan
+
+/// What kind of value a range holds.
+pub enum Kind {
+    Object,
+    Array,
+    String,
+    Number,
+    True,
+    False,
+    Null,
+}
+
+impl Copy for Kind {}
+
+/// A value: its kind and the range `start..end` of its text.
+pub struct Value {
+    pub kind: Kind,
+    pub start: usize,
+    pub end: usize,
+}
+
+impl Copy for Value {}
+
+impl Value {
+    pub fn is_object(self) -> bool {
+        match self.kind {
+            Kind::Object => true
+            _ => false
+        }
+    }
+
+    pub fn is_array(self) -> bool {
+        match self.kind {
+            Kind::Array => true
+            _ => false
+        }
+    }
+
+    pub fn is_string(self) -> bool {
+        match self.kind {
+            Kind::String => true
+            _ => false
+        }
+    }
+
+    pub fn is_null(self) -> bool {
+        match self.kind {
+            Kind::Null => true
+            _ => false
+        }
+    }
+
+    /// The bytes between a string's quotes.
+    pub fn text(self, _ buf: MemSpan) -> ref MemSpan {
+        buf.slice(offset: self.start + 1, len: self.end - self.start - 2)
+    }
+}
+
+// Deeper documents are rejected, which bounds the recursion.
+const MAX_DEPTH: usize = 64
+
+/// The document's root value, or `None` if `buf` is not one JSON value.
+pub fn parse(_ buf: MemSpan) -> Option<Value> {
+    let start = skip_ws(buf, at: 0)
+    let value = read(buf, at: start, depth: 0)?
+    if skip_ws(buf, at: value.end) != buf.len() {
+        return Option::None
+    }
+    Option::Some(value)
+}
+
+/// The member of object `obj` named `key`.
+pub fn get<K: core::text::Text>(_ buf: MemSpan, _ obj: Value, _ key: K) -> Option<Value> {
+    if !obj.is_object() {
+        return Option::None
+    }
+    var at = skip_ws(buf, at: obj.start + 1)
+    if buf.byte_at(at) == b'}' {
+        return Option::None
+    }
+    loop {
+        let name = read(buf, at, depth: MAX_DEPTH - 1)?
+        at = skip_ws(buf, at: name.end)
+        at = skip_ws(buf, at: at + 1) // the ':'
+        let value = read(buf, at, depth: 1)?
+        if same_text(buf, value: name, key) {
+            return Option::Some(value)
+        }
+        at = skip_ws(buf, at: value.end)
+        if buf.byte_at(at) == b'}' {
+            return Option::None
+        }
+        at = skip_ws(buf, at: at + 1) // the ','
+    }
+}
+
+/// Element `index` of array `arr`.
+pub fn at(_ buf: MemSpan, _ arr: Value, _ index: usize) -> Option<Value> {
+    if !arr.is_array() {
+        return Option::None
+    }
+    var pos = skip_ws(buf, at: arr.start + 1)
+    if buf.byte_at(pos) == b']' {
+        return Option::None
+    }
+    var i: usize = 0
+    loop {
+        let value = read(buf, at: pos, depth: 1)?
+        if i == index {
+            return Option::Some(value)
+        }
+        pos = skip_ws(buf, at: value.end)
+        if buf.byte_at(pos) == b']' {
+            return Option::None
+        }
+        pos = skip_ws(buf, at: pos + 1)
+        i += 1
+    }
+}
+
+/// Number of elements of array `arr`.
+pub fn len(_ buf: MemSpan, _ arr: Value) -> usize {
+    var n: usize = 0
+    while at(buf, arr, n).is_some() {
+        n += 1
+    }
+    n
+}
+
+fn same_text<K: core::text::Text>(_ buf: MemSpan, value: Value, _ key: K) -> bool {
+    if !value.is_string() {
+        return false
+    }
+    let text = value.text(buf)
+    let n = key.text_len()
+    if text.len() != n {
+        return false
+    }
+    var i: usize = 0
+    while i < n {
+        if text.byte_at(i) != key.text_byte(i) {
+            return false
+        }
+        i += 1
+    }
+    true
+}
+
+// Reads the value starting exactly at `at` (no leading whitespace).
+fn read(_ buf: MemSpan, at: usize, depth: usize) -> Option<Value> {
+    if at >= buf.len() || depth > MAX_DEPTH {
+        return Option::None
+    }
+    let c = buf.byte_at(at)
+    if c == b'{' {
+        return read_container(buf, at, depth, close: b'}', object: true)
+    }
+    if c == b'[' {
+        return read_container(buf, at, depth, close: b']', object: false)
+    }
+    if c == b'"' {
+        let end = read_string(buf, at)?
+        return Option::Some(Value { kind: Kind::String, start: at, end })
+    }
+    if c == b't' {
+        return literal(buf, at, word: "true", kind: Kind::True)
+    }
+    if c == b'f' {
+        return literal(buf, at, word: "false", kind: Kind::False)
+    }
+    if c == b'n' {
+        return literal(buf, at, word: "null", kind: Kind::Null)
+    }
+    let end = read_number(buf, at)?
+    Option::Some(Value { kind: Kind::Number, start: at, end })
+}
+
+fn read_container(_ buf: MemSpan, at: usize, depth: usize, close: u8, object: bool) -> Option<Value> {
+    let kind = if object { Kind::Object } else { Kind::Array }
+    var pos = skip_ws(buf, at: at + 1)
+    if pos < buf.len() && buf.byte_at(pos) == close {
+        return Option::Some(Value { kind, start: at, end: pos + 1 })
+    }
+    loop {
+        if object {
+            if pos >= buf.len() || buf.byte_at(pos) != b'"' {
+                return Option::None
+            }
+            pos = read_string(buf, at: pos)?
+            pos = skip_ws(buf, at: pos)
+            if pos >= buf.len() || buf.byte_at(pos) != b':' {
+                return Option::None
+            }
+            pos = skip_ws(buf, at: pos + 1)
+        }
+        let value = read(buf, at: pos, depth: depth + 1)?
+        pos = skip_ws(buf, at: value.end)
+        if pos >= buf.len() {
+            return Option::None
+        }
+        let c = buf.byte_at(pos)
+        if c == close {
+            return Option::Some(Value { kind, start: at, end: pos + 1 })
+        }
+        if c != b',' {
+            return Option::None
+        }
+        pos = skip_ws(buf, at: pos + 1)
+    }
+}
+
+// Returns the offset just past the closing quote.
+fn read_string(_ buf: MemSpan, at: usize) -> Option<usize> {
+    var pos = at + 1
+    while pos < buf.len() {
+        let c = buf.byte_at(pos)
+        if c == b'"' {
+            return Option::Some(pos + 1)
+        }
+        if c < 0x20 {
+            return Option::None
+        }
+        if c == b'\\' {
+            pos += 1
+            if pos >= buf.len() {
+                return Option::None
+            }
+            let e = buf.byte_at(pos)
+            if e == b'u' {
+                if buf.len() - pos < 5 {
+                    return Option::None
+                }
+                var k: usize = 1
+                while k <= 4 {
+                    if !is_hex(buf.byte_at(pos + k)) {
+                        return Option::None
+                    }
+                    k += 1
+                }
+                pos += 4
+            } else if e != b'"' && e != b'\\' && e != b'/' && e != b'b' && e != b'f' && e != b'n' && e != b'r' && e != b't' {
+                return Option::None
+            }
+        }
+        pos += 1
+    }
+    Option::None
+}
+
+fn read_number(_ buf: MemSpan, at: usize) -> Option<usize> {
+    var pos = at
+    let n = buf.len()
+    if pos < n && buf.byte_at(pos) == b'-' {
+        pos += 1
+    }
+    let int_start = pos
+    while pos < n && is_digit(buf.byte_at(pos)) {
+        pos += 1
+    }
+    if pos == int_start || (buf.byte_at(int_start) == b'0' && pos - int_start > 1) {
+        return Option::None
+    }
+    if pos < n && buf.byte_at(pos) == b'.' {
+        pos += 1
+        let frac = pos
+        while pos < n && is_digit(buf.byte_at(pos)) {
+            pos += 1
+        }
+        if pos == frac {
+            return Option::None
+        }
+    }
+    if pos < n && (buf.byte_at(pos) == b'e' || buf.byte_at(pos) == b'E') {
+        pos += 1
+        if pos < n && (buf.byte_at(pos) == b'+' || buf.byte_at(pos) == b'-') {
+            pos += 1
+        }
+        let exp = pos
+        while pos < n && is_digit(buf.byte_at(pos)) {
+            pos += 1
+        }
+        if pos == exp {
+            return Option::None
+        }
+    }
+    Option::Some(pos)
+}
+
+fn literal<const N: usize>(_ buf: MemSpan, at: usize, word: String<N>, kind: Kind) -> Option<Value> {
+    let n = word.text_len()
+    if buf.len() - at < n {
+        return Option::None
+    }
+    var i: usize = 0
+    while i < n {
+        if buf.byte_at(at + i) != word.text_byte(i) {
+            return Option::None
+        }
+        i += 1
+    }
+    Option::Some(Value { kind, start: at, end: at + n })
+}
+
+fn skip_ws(_ buf: MemSpan, at: usize) -> usize {
+    var pos = at
+    while pos < buf.len() {
+        let c = buf.byte_at(pos)
+        if c != b' ' && c != b'\n' && c != b'\r' && c != b'\t' {
+            return pos
+        }
+        pos += 1
+    }
+    pos
+}
+
+fn is_digit(_ c: u8) -> bool {
+    c >= b'0' && c <= b'9'
+}
+
+fn is_hex(_ c: u8) -> bool {
+    is_digit(c) || (c >= b'a' && c <= b'f') || (c >= b'A' && c <= b'F')
+}

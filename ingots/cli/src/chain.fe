@@ -1,0 +1,147 @@
+//! Blocks and proofs from a node, checked here with the same library the
+//! contracts run before anything is trusted.
+
+use core::ptr::{MemBuffer, MemSpan}
+use core::text::{decode_hex, parse_hex_uint}
+use std::evm::rlp::{encode_bytes, encode_uint}
+use std::io::Display
+use std::process::Spawn
+use ferrotype::state::{self, Header}
+use ingot::hex
+use ingot::json::{self, Value}
+use ingot::rpc::{self, Response}
+
+/// A block header from the node: its RLP encoding and the fields the library
+/// decoded from it.
+pub struct Block {
+    pub rlp: MemBuffer,
+    pub header: Header,
+}
+
+/// Fetches block `tag` (`latest` or a `0x` number), rebuilds the RLP header
+/// from its fields and hashes it with the library. A node that reports a
+/// block hash its own header does not hash to is refused.
+pub fn block<U: Display, T: Display>(_ url: U, _ tag: T) -> Result<MemBuffer, Block> uses (proc: mut Spawn) {
+    let response = rpc::call(url, "eth_getBlockByNumber", format!("[\"", tag, "\",false]"))?
+    let body = response.body.span()
+    if response.result.is_null() {
+        return Result::Err(format!("the node does not know block ", tag))
+    }
+    let rlp = match header_rlp(body, response.result) {
+        Option::Some(rlp) => rlp
+        Option::None => { return Result::Err(format!("block ", tag, " has a header field that is not hex")) }
+    }
+    let header = match state::header(rlp.span(), at: 0, len: rlp.len()) {
+        Option::Some(h) => h
+        Option::None => { return Result::Err(format!("block ", tag, " does not decode as a header")) }
+    }
+    let reported = match word_field(body, response.result, "hash") {
+        Option::Some(w) => w
+        Option::None => { return Result::Err(format!("block ", tag, " has no hash")) }
+    }
+    if reported != header.hash.value {
+        return Result::Err(format!("the node's header for block ", tag, " hashes to ", hex::word(header.hash.value), ", not to the block hash it reports, ", hex::word(reported)))
+    }
+    Result::Ok(Block { rlp, header })
+}
+
+/// `eth_getProof` for `account` and one `slot` at block `number`.
+pub fn proof<U: Display>(_ url: U, account: Address, slot: u256, number: u256) -> Result<MemBuffer, Response> uses (proc: mut Spawn) {
+    rpc::call(
+        url,
+        "eth_getProof",
+        format!("[\"", hex::address(account), "\",[\"", hex::word(slot), "\"],\"", hex::quantity(number), "\"]"),
+    )
+}
+
+/// The nodes of a JSON array of hex strings, laid end to end: the packed
+/// proof layout.
+pub fn packed(_ body: MemSpan, _ nodes: Value) -> Option<MemBuffer> {
+    var out = MemBuffer::empty()
+    var i: usize = 0
+    loop {
+        match json::at(body, nodes, i) {
+            Option::Some(node) => {
+                let bytes = decode_hex(node.text(body))?
+                out.extend_from(bytes.span())
+            }
+            Option::None => { return Option::Some(out) }
+        }
+        i += 1
+    }
+}
+
+/// A `0x` quantity or hash field of `object` as a word.
+pub fn word_field<const N: usize>(_ body: MemSpan, _ object: Value, _ name: String<N>) -> Option<u256> {
+    let value = json::get(body, object, name)?
+    if !value.is_string() {
+        return Option::None
+    }
+    parse_hex_uint(value.text(body))
+}
+
+/// The RLP block header built from `eth_getBlockByNumber` fields, in RLP order.
+/// The first fifteen are in every header; later
+/// forks append the rest, and a header ends at the first one it lacks.
+pub fn header_rlp(_ body: MemSpan, _ block: Value) -> Option<MemBuffer> {
+    var payload = MemBuffer::empty()
+    bytes_field(mut payload, body, block, "parentHash")?
+    bytes_field(mut payload, body, block, "sha3Uncles")?
+    bytes_field(mut payload, body, block, "miner")?
+    bytes_field(mut payload, body, block, "stateRoot")?
+    bytes_field(mut payload, body, block, "transactionsRoot")?
+    bytes_field(mut payload, body, block, "receiptsRoot")?
+    bytes_field(mut payload, body, block, "logsBloom")?
+    int_field(mut payload, body, block, "difficulty")?
+    int_field(mut payload, body, block, "number")?
+    int_field(mut payload, body, block, "gasLimit")?
+    int_field(mut payload, body, block, "gasUsed")?
+    int_field(mut payload, body, block, "timestamp")?
+    bytes_field(mut payload, body, block, "extraData")?
+    bytes_field(mut payload, body, block, "mixHash")?
+    bytes_field(mut payload, body, block, "nonce")?
+    // London and later.
+    if int_field(mut payload, body, block, "baseFeePerGas").is_some()
+        && bytes_field(mut payload, body, block, "withdrawalsRoot").is_some()
+        && int_field(mut payload, body, block, "blobGasUsed").is_some()
+        && int_field(mut payload, body, block, "excessBlobGas").is_some()
+        && bytes_field(mut payload, body, block, "parentBeaconBlockRoot").is_some()
+    {
+        let _ = bytes_field(mut payload, body, block, "requestsHash")
+    }
+    var out = list_prefix(payload.len())
+    out.extend_from(payload.span())
+    Option::Some(out)
+}
+
+fn bytes_field<const N: usize>(_ out: mut MemBuffer, _ body: MemSpan, _ block: Value, _ name: String<N>) -> Option<()> {
+    let value = json::get(body, block, name)?
+    if !value.is_string() {
+        return Option::None
+    }
+    let bytes = decode_hex(value.text(body))?
+    out.extend_from(encode_bytes(bytes.span()).span())
+    Option::Some(())
+}
+
+fn int_field<const N: usize>(_ out: mut MemBuffer, _ body: MemSpan, _ block: Value, _ name: String<N>) -> Option<()> {
+    let value = json::get(body, block, name)?
+    if !value.is_string() {
+        return Option::None
+    }
+    let n = parse_hex_uint(value.text(body))?
+    out.extend_from(encode_uint(n).span())
+    Option::Some(())
+}
+
+fn list_prefix(_ len: usize) -> MemBuffer {
+    var out = MemBuffer::empty()
+    if len < 56 {
+        out.push((0xc0 + len).downcast_truncate())
+        return out
+    }
+    let size = hex::minimal(len as u256)
+    out.push((0xf7 + size.len()).downcast_truncate())
+    out.extend_from(size.span())
+    out
+}

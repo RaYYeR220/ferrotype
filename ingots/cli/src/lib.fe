@@ -1,0 +1,405 @@
+//! `ferrotype`: read any contract's storage at a block, proven, from the
+//! command line, and build the calldata the Ferrotype contracts accept.
+//!
+//! Everything the CLI trusts it checks first with the same library the
+//! contracts run: a block header must hash to the block hash, the account must
+//! be proven under the header's state root, the slot under the account's
+//! storage root. The calldata it prints is encoded from the contracts' own
+//! message types, so it cannot drift from what the contracts decode.
+
+use core::message::MsgVariant
+use core::ptr::{MemBuffer, MemSpan}
+use core::text::{Text, decode_hex}
+use core::abi::AbiSize
+use std::abi::{Bytes, Bytes32, DynString, Sol}
+use std::io::Display
+use std::env::{Arg, Args}
+use std::evm::encode_abi_payload
+use std::fs::Fs
+use std::io::{Stderr, Stdout}
+use std::process::Spawn
+use contracts::plebiscite::PlebisciteMsg
+use contracts::reader::ReaderMsg
+use ferrotype::nodes::Packed
+use ferrotype::slots::BalanceLayout
+use ferrotype::state::{self, Account, StateRoot, StorageRoot}
+use ferrotype::trie::ProofError
+
+pub use json
+pub use hex
+pub use rpc
+pub use chain
+pub use offline
+
+fn usage() -> DynString {
+    "usage:
+  ferrotype read    --rpc URL --account ADDRESS --slot SLOT [--block N]
+  ferrotype balance --rpc URL --token ADDRESS --holder ADDRESS --layout solidity|vyper|flagged --slot N [--block N]
+  ferrotype propose --rpc URL --token ADDRESS --supply-slot N --target ADDRESS [--value WEI] [--data HEX] [--block N]
+  ferrotype vote    --rpc URL --dao ADDRESS --id N --holder ADDRESS [--against]
+  ferrotype verify  FILE.json
+
+Every value read from the node is proven locally before it is printed.
+Numbers are decimal or 0x hex. --block defaults to the latest block.
+"
+}
+
+pub fn main() -> i32 uses (args: Args, out: mut Stdout, err: mut Stderr, proc: mut Spawn, fs: Fs) {
+    if args.count() < 2 {
+        eprint!(usage())
+        return 2
+    }
+    let command = args.get(1)
+    let result = if command == "read" {
+        read()
+    } else if command == "balance" {
+        balance()
+    } else if command == "propose" {
+        propose()
+    } else if command == "vote" {
+        vote()
+    } else if command == "verify" {
+        offline::verify_file()
+    } else {
+        Result::Err(format!("unknown command ", command, "\n", usage()))
+    }
+    match result {
+        Result::Ok(()) => 0
+        Result::Err(message) => {
+            eprintln!("error: ", message)
+            1
+        }
+    }
+}
+
+// ---- commands ------------------------------------------------------------------
+
+fn read() -> Result<MemBuffer, ()> uses (args: Args, out: mut Stdout, proc: mut Spawn) {
+    let url = required("--rpc")?
+    let account = address_arg("--account")?
+    let slot = number_arg("--slot")?
+    let block = chain::block(url, block_tag())?
+    let proven = prove_slot(url, block.header.state_root, block.header.number, account, slot)?
+    print_block(block.header)
+    print_account(account, proven.0)
+    println!("slot     ", hex::word(slot))
+    println!("value    ", hex::word(proven.1), " (", proven.1, ")")
+    let call = ReaderMsg::StorageAtPacked {
+        state_root: Bytes32 { val: block.header.state_root.value },
+        account,
+        slot: Bytes32 { val: slot },
+        account_proof: proven.2,
+        storage_proof: proven.3,
+    }
+    println!("\nStateReader.storageAtPacked calldata:")
+    println!(hex::bytes(calldata(call).span()))
+    Result::Ok(())
+}
+
+fn balance() -> Result<MemBuffer, ()> uses (args: Args, out: mut Stdout, proc: mut Spawn) {
+    let url = required("--rpc")?
+    let token = address_arg("--token")?
+    let holder = address_arg("--holder")?
+    let layout = layout_arg()?
+    let block = chain::block(url, block_tag())?
+    let slot = layout.slot(holder)
+    let proven = prove_slot(url, block.header.state_root, block.header.number, token, slot)?
+    let balance = layout.balance(proven.1)
+    print_block(block.header)
+    println!("token    ", hex::address(token))
+    println!("holder   ", hex::address(holder))
+    println!("slot     ", hex::word(slot))
+    println!("balance  ", balance.amount)
+    if balance.flagged {
+        println!("flagged  yes: the token marks this holder (for USDC, blacklisted)")
+    }
+    Result::Ok(())
+}
+
+fn propose() -> Result<MemBuffer, ()> uses (args: Args, out: mut Stdout, proc: mut Spawn) {
+    let url = required("--rpc")?
+    let token = address_arg("--token")?
+    let supply_slot = number_arg("--supply-slot")?
+    let target = address_arg("--target")?
+    let value = match option("--value") {
+        Option::Some(text) => parse_number(text, "--value")?
+        Option::None => 0
+    }
+    let data = match option("--data") {
+        Option::Some(text) => match decode_hex(text) {
+            Option::Some(bytes) => bytes
+            Option::None => { return Result::Err(format!("--data is not hex: ", text)) }
+        }
+        Option::None => Bytes::empty()
+    }
+    let block = chain::block(url, block_tag())?
+    let proven = prove_slot(url, block.header.state_root, block.header.number, token, supply_slot)?
+    print_block(block.header)
+    print_account(token, proven.0)
+    println!("supply   ", proven.1)
+    let header = Bytes::from_payload(source: block.rlp.span())
+    let call = PlebisciteMsg::Propose {
+        header,
+        token_proof: proven.2,
+        supply_proof: proven.3,
+        target,
+        value,
+        data,
+    }
+    println!("\nPlebiscite.propose calldata (send it within 256 blocks of block ", block.header.number, "):")
+    println!(hex::bytes(calldata(call).span()))
+    Result::Ok(())
+}
+
+fn vote() -> Result<MemBuffer, ()> uses (args: Args, out: mut Stdout, proc: mut Spawn) {
+    let url = required("--rpc")?
+    let dao = address_arg("--dao")?
+    let id = number_arg("--id")?
+    let holder = address_arg("--holder")?
+    let support = !flag("--against")
+
+    // What the DAO counts: the token and its layout, and the proposal's snapshot.
+    let config = eth_call_words(url, dao, calldata(PlebisciteMsg::Config {}), count: 7)?
+    let token = Address::new(config.read_word(0))
+    let layout = match BalanceLayout::from_parts(kind: config.read_word(32).downcast_truncate(), slot: config.read_word(64)) {
+        Option::Some(l) => l
+        Option::None => { return Result::Err(format!("the DAO reports an unknown balance layout")) }
+    }
+    let snapshot = eth_call_words(url, dao, calldata(PlebisciteMsg::SnapshotOf { id }), count: 3)?
+    let block_number = snapshot.read_word(0)
+    let storage_root = StorageRoot { value: snapshot.read_word(32) }
+
+    // The holder's balance slot at the snapshot block, proven against the
+    // storage root the DAO itself will check it against.
+    let slot = layout.slot(holder)
+    let response = chain::proof(url, account: token, slot, number: block_number)?
+    let body = response.body.span()
+    let nodes = storage_nodes(body, response.result)?
+    var cursor = Packed::new(start: 0, len: nodes.len())
+    let word = match state::storage(nodes.span(), nodes: mut cursor, root: storage_root, slot) {
+        Result::Ok(w) => w
+        Result::Err(e) => { return Result::Err(format!("the node's proof does not match the DAO's snapshot: ", reason(e))) }
+    }
+    let balance = layout.balance(word)
+    println!("dao      ", hex::address(dao))
+    println!("proposal ", id, " counted at block ", block_number)
+    println!("holder   ", hex::address(holder))
+    println!("weight   ", balance.amount)
+    if balance.flagged {
+        return Result::Err(format!("the token flags this holder, so the DAO refuses its vote"))
+    }
+    if balance.amount == 0 {
+        return Result::Err(format!("the holder held none of the token at block ", block_number))
+    }
+    let call = PlebisciteMsg::Vote { id, support, balance_proof: Bytes::from_payload(source: nodes.span()) }
+    println!("\nPlebiscite.vote calldata (", if support { "for" } else { "against" }, "), to be sent from the holder:")
+    println!(hex::bytes(calldata(call).span()))
+    Result::Ok(())
+}
+
+// ---- proving -------------------------------------------------------------------
+
+/// Proves `slot` of `account` at the block with state root `root`. Returns
+/// the account, the slot's value and both packed proofs.
+fn prove_slot<U: Display>(_ url: U, _ root: StateRoot, _ number: u256, _ account: Address, _ slot: u256) -> Result<MemBuffer, (Account, u256, Bytes, Bytes)>
+    uses (proc: mut Spawn)
+{
+    let response = chain::proof(url, account, slot, number)?
+    let body = response.body.span()
+    let account_nodes = match ingot::json::get(body, response.result, "accountProof") {
+        Option::Some(list) => match chain::packed(body, list) {
+            Option::Some(nodes) => nodes
+            Option::None => { return Result::Err(format!("the account proof is not hex")) }
+        }
+        Option::None => { return Result::Err(format!("the node's answer has no accountProof")) }
+    }
+    var cursor = Packed::new(start: 0, len: account_nodes.len())
+    let proven = match state::account(account_nodes.span(), nodes: mut cursor, root, address: account) {
+        Result::Ok(a) => a
+        Result::Err(e) => { return Result::Err(format!("the account proof does not verify: ", reason(e))) }
+    }
+    let slot_nodes = storage_nodes(body, response.result)?
+    var slot_cursor = Packed::new(start: 0, len: slot_nodes.len())
+    let value = match state::storage(slot_nodes.span(), nodes: mut slot_cursor, root: proven.storage_root, slot) {
+        Result::Ok(v) => v
+        Result::Err(e) => { return Result::Err(format!("the storage proof does not verify: ", reason(e))) }
+    }
+    // A node that disagrees with its own proof is worth knowing about.
+    match chain::word_field(body, storage_entry(body, response.result)?, "value") {
+        Option::Some(claimed) => {
+            if claimed != value {
+                return Result::Err(format!("the node claims ", hex::word(claimed), " but its proof proves ", hex::word(value)))
+            }
+        }
+        Option::None => {}
+    }
+    Result::Ok((
+        proven,
+        value,
+        Bytes::from_payload(source: account_nodes.span()),
+        Bytes::from_payload(source: slot_nodes.span()),
+    ))
+}
+
+fn storage_entry(_ body: MemSpan, _ result: ingot::json::Value) -> Result<MemBuffer, ingot::json::Value> {
+    match ingot::json::get(body, result, "storageProof") {
+        Option::Some(list) => match ingot::json::at(body, list, 0) {
+            Option::Some(entry) => Result::Ok(entry)
+            Option::None => Result::Err(format!("the node's answer has an empty storageProof"))
+        }
+        Option::None => Result::Err(format!("the node's answer has no storageProof"))
+    }
+}
+
+fn storage_nodes(_ body: MemSpan, _ result: ingot::json::Value) -> Result<MemBuffer, MemBuffer> {
+    let entry = storage_entry(body, result)?
+    match ingot::json::get(body, entry, "proof") {
+        Option::Some(list) => match chain::packed(body, list) {
+            Option::Some(nodes) => Result::Ok(nodes)
+            Option::None => Result::Err(format!("the storage proof is not hex"))
+        }
+        Option::None => Result::Err(format!("the storage entry has no proof"))
+    }
+}
+
+/// Words returned by a view call to `to`.
+fn eth_call_words<U: Display>(_ url: U, _ to: Address, _ data: MemBuffer, count: usize) -> Result<MemBuffer, MemBuffer>
+    uses (proc: mut Spawn)
+{
+    let response = rpc::call(url, "eth_call", format!("[{\"to\":\"", hex::address(to), "\",\"data\":\"", hex::bytes(data.span()), "\"},\"latest\"]"))?
+    let body = response.body.span()
+    let bytes = match decode_hex(response.result.text(body)) {
+        Option::Some(b) => b
+        Option::None => { return Result::Err(format!("eth_call returned something that is not hex")) }
+    }
+    if bytes.len() < count * 32 {
+        return Result::Err(format!("eth_call to ", hex::address(to), " returned ", bytes.len(), " bytes; is it a Plebiscite, and does the proposal exist?"))
+    }
+    var words = MemBuffer::empty()
+    words.extend_from(bytes.span().slice(offset: 0, len: count * 32))
+    Result::Ok(words)
+}
+
+// ---- calldata ------------------------------------------------------------------
+
+/// The selector of `M` followed by its ABI encoding: what a contract's `recv`
+/// block decodes as an `M`.
+fn calldata<M>(_ message: own M) -> MemBuffer
+    where M: MsgVariant<Sol> + AbiSize
+{
+    let selector: u32 = <M as MsgVariant<Sol>>::SELECTOR
+    var out = MemBuffer::empty()
+    out.push((selector >> 24).downcast_truncate())
+    out.push((selector >> 16).downcast_truncate())
+    out.push((selector >> 8).downcast_truncate())
+    out.push(selector.downcast_truncate())
+    out.extend_from(encode_abi_payload(message).span())
+    out
+}
+
+// ---- arguments -----------------------------------------------------------------
+
+fn option<const N: usize>(_ name: String<N>) -> Option<Arg> uses (args: Args) {
+    var i: usize = 2
+    while i + 1 < args.count() {
+        if args.get(i) == name {
+            return Option::Some(args.get(i + 1))
+        }
+        i += 1
+    }
+    Option::None
+}
+
+fn flag<const N: usize>(_ name: String<N>) -> bool uses (args: Args) {
+    var i: usize = 2
+    while i < args.count() {
+        if args.get(i) == name {
+            return true
+        }
+        i += 1
+    }
+    false
+}
+
+fn required<const N: usize>(_ name: String<N>) -> Result<MemBuffer, Arg> uses (args: Args) {
+    match option(name) {
+        Option::Some(arg) => Result::Ok(arg)
+        Option::None => Result::Err(format!("missing ", name, "\n", usage()))
+    }
+}
+
+fn address_arg<const N: usize>(_ name: String<N>) -> Result<MemBuffer, Address> uses (args: Args) {
+    let text = required(name)?
+    match std::evm::parse_address(text) {
+        Option::Some(a) => Result::Ok(a)
+        Option::None => Result::Err(format!(name, " is not an address: ", text))
+    }
+}
+
+fn number_arg<const N: usize>(_ name: String<N>) -> Result<MemBuffer, u256> uses (args: Args) {
+    let text = required(name)?
+    parse_number(text, name)
+}
+
+fn parse_number<T: Text, const N: usize>(_ text: T, _ name: String<N>) -> Result<MemBuffer, u256> {
+    match hex::number(text) {
+        Option::Some(n) => Result::Ok(n)
+        Option::None => Result::Err(format!(name, " is not a number"))
+    }
+}
+
+fn layout_arg() -> Result<MemBuffer, BalanceLayout> uses (args: Args) {
+    let kind = required("--layout")?
+    let slot = number_arg("--slot")?
+    if kind == "solidity" {
+        Result::Ok(BalanceLayout::Solidity(slot))
+    } else if kind == "vyper" {
+        Result::Ok(BalanceLayout::Vyper(slot))
+    } else if kind == "flagged" {
+        Result::Ok(BalanceLayout::FlaggedSolidity(slot))
+    } else {
+        Result::Err(format!("--layout must be solidity, vyper or flagged, not ", kind))
+    }
+}
+
+/// `--block` as a JSON-RPC block tag.
+fn block_tag() -> MemBuffer uses (args: Args) {
+    match option("--block") {
+        Option::Some(text) => {
+            if text == "latest" {
+                format!("latest")
+            } else {
+                match hex::number(text) {
+                    Option::Some(n) => hex::quantity(n)
+                    Option::None => format!(text)
+                }
+            }
+        }
+        Option::None => format!("latest")
+    }
+}
+
+// ---- output --------------------------------------------------------------------
+
+fn print_block(_ header: state::Header) uses (out: mut Stdout) {
+    println!("block    ", header.number, " ", hex::word(header.hash.value), " (header hash checked)")
+    println!("state    ", hex::word(header.state_root.value))
+}
+
+fn print_account(_ address: Address, _ account: Account) uses (out: mut Stdout) {
+    println!("account  ", hex::address(address), if account.exists { "" } else { " (does not exist)" })
+    if account.exists {
+        println!("storage  ", hex::word(account.storage_root.value))
+        println!("balance  ", account.balance, " wei, nonce ", account.nonce)
+    }
+}
+
+pub fn reason(_ e: ProofError) -> DynString {
+    match e {
+        ProofError::Malformed => "a node is malformed"
+        ProofError::HashMismatch => "a node does not hash to the reference its parent holds"
+        ProofError::MissingNode => "the proof ends before the path does"
+        ProofError::ExtraNodes => "the proof has nodes left over"
+        ProofError::BadReference => "a child reference is neither a hash nor a small embedded node"
+    }
+}

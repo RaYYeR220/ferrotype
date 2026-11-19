@@ -1,0 +1,80 @@
+//! Hex text in and out.
+
+use core::ptr::{MemBuffer, MemSpan}
+use core::text::{Text, hex, parse_hex_uint, parse_uint}
+
+/// `0x` and the 64 digits of `value`.
+pub fn word(_ value: u256) -> MemBuffer {
+    format!("0x", hex(value, 32))
+}
+
+/// A JSON-RPC quantity: `0x` and the digits of `value` without leading
+/// zeros (`0x0` for zero). A 64-digit number would read as a block hash.
+pub fn quantity(_ value: u256) -> MemBuffer {
+    var digits: usize = 1
+    var rest = value >> 4
+    while rest != 0 {
+        digits += 1
+        rest >>= 4
+    }
+    var out = MemBuffer::with_capacity(2 + digits)
+    out.push(b'0')
+    out.push(b'x')
+    var i = digits
+    while i > 0 {
+        i -= 1
+        out.push(digit(((value >> (i * 4) as u256) & 0x0f).downcast_truncate()))
+    }
+    out
+}
+
+/// `0x` and the 40 digits of `address`.
+pub fn address(_ address: Address) -> MemBuffer {
+    format!("0x", hex(address.word(), 20))
+}
+
+/// `0x` and two digits per byte of `bytes`.
+pub fn bytes(_ bytes: MemSpan) -> MemBuffer {
+    var out = MemBuffer::with_capacity(2 + bytes.len() * 2)
+    out.push(b'0')
+    out.push(b'x')
+    var i: usize = 0
+    while i < bytes.len() {
+        let b = bytes.byte_at(i)
+        out.push(digit(b >> 4))
+        out.push(digit(b & 0x0f))
+        i += 1
+    }
+    out
+}
+
+/// A number written as `0x` hex or in decimal.
+pub fn number<T: Text>(_ text: T) -> Option<u256> {
+    if text.text_len() >= 2 && text.text_byte(0) == b'0' && text.text_byte(1) == b'x' {
+        parse_hex_uint(text)
+    } else {
+        parse_uint(text)
+    }
+}
+
+/// The minimal big-endian bytes of `value`: none for zero, as RLP and
+/// JSON-RPC quantities write integers.
+pub fn minimal(_ value: u256) -> MemBuffer {
+    var len: usize = 0
+    var rest = value
+    while rest != 0 {
+        len += 1
+        rest >>= 8
+    }
+    var out = MemBuffer::with_capacity(len)
+    var i = len
+    while i > 0 {
+        i -= 1
+        out.push(((value >> (i * 8) as u256) & 0xff).downcast_truncate())
+    }
+    out
+}
+
+fn digit(_ n: u8) -> u8 {
+    if n < 10 { b'0' + n } else { b'a' + n - 10 }
+}
