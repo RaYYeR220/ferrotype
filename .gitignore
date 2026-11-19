@@ -18,3 +18,4 @@ dist/
 
 # python bytecode
 __pycache__/
+deployments/anvil.json

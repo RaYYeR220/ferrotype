@@ -1,6 +1,6 @@
 # Ferrotype
 
-**Pitch:** Ferrotype lets a contract read any other contract's storage at a past block, trustlessly, for <!-- n:fe_gas -->178,012<!-- /n --> gas — <!-- n:vs_lido -->48%<!-- /n --> less than Lido's audited verifier and <!-- n:vs_op -->65%<!-- /n --> less than Optimism's — with one Fe codebase that runs on-chain, in a native CLI and in the browser.
+**Pitch:** Ferrotype lets a contract read any other contract's storage at a past block, trustlessly, for <!-- n:fe_gas -->178,284<!-- /n --> gas — <!-- n:vs_lido -->48%<!-- /n --> less than Lido's audited verifier and <!-- n:vs_op -->65%<!-- /n --> less than Optimism's — with one Fe codebase that runs on-chain, in a native CLI and in the browser.
 
 A DAO wants USDC holders to vote on its treasury. USDC has no checkpoints and never will: no one upgrades a $75B token for one DAO. Today the answer is an off-chain snapshot server that everyone has to trust. With Ferrotype the DAO reads each voter's balance straight out of USDC's storage at the proposal's block, proven against the block hash the chain itself remembers. The token cooperates without knowing it.
 
@@ -94,19 +94,19 @@ More Fe that carries weight here:
           + weight from proofs      chain.fe (headers)
 ```
 
-- `ingots/conformance` holds the tests: real mainnet proofs, 333 generated vectors, the contracts, and the ballot rules.
+- `ingots/conformance` holds the tests: real mainnet proofs, 335 generated vectors, the contracts, and the ballot rules.
 - `bench/` measures gas against the audited Solidity verifiers on the same proofs (Foundry).
 - `scripts/` fetch fixtures, generate vectors and tests, bundle the wasm module, render this README's numbers, and run the end-to-end flow.
 
 ## Results
 
-**Correctness, on three runtimes.** The same 333 generated proof vectors (from the reference implementation `@ethereumjs/trie`: presence, embedded nodes, all three shapes of absence, 141 invalid proofs each with its expected reason) and the mainnet fixtures pass on every target:
+**Correctness, on three runtimes.** The same 335 generated proof vectors (from the reference implementation `@ethereumjs/trie`: presence, embedded nodes, all three shapes of absence, 140 invalid proofs each with its expected reason) and the mainnet fixtures pass on every target:
 
 | Target | Command | Result |
 |---|---|---|
-| EVM | `fe test ingots/conformance` | <!-- n:evm_tests -->369<!-- /n --> passed |
-| Native | `fe test --backend native ingots/conformance` | <!-- n:native_tests -->352<!-- /n --> passed (the contract tests are EVM-only; the million-round fuzz test is native-only) |
-| WebAssembly | `node wasm/check.mjs` | <!-- n:wasm_checks -->361<!-- /n --> checks passed (the vectors, the mainnet reads, and the traced reads) |
+| EVM | `fe test ingots/conformance` | <!-- n:evm_tests -->371<!-- /n --> passed |
+| Native | `fe test --backend native ingots/conformance` | <!-- n:native_tests -->354<!-- /n --> passed (the contract tests are EVM-only; the million-round fuzz test is native-only) |
+| WebAssembly | `node wasm/check.mjs` | <!-- n:wasm_checks -->363<!-- /n --> checks passed (the vectors, the mainnet reads, and the traced reads) |
 
 **Damaged proofs.** [`fuzz.fe`](ingots/conformance/src/fuzz.fe) damages the mainnet proofs at random (bit flips, overwritten bytes, cut tails, removed ranges, appended bytes, one 32-byte window copied over another) and verifies them. Of <!-- n:fuzz_rounds -->1,000,000<!-- /n --> damaged proofs, <!-- n:fuzz_true -->679<!-- /n --> still prove the true value (the damage missed every byte that matters), <!-- n:fuzz_rejected -->999,321<!-- /n --> are rejected, and <!-- n:fuzz_wrong -->0<!-- /n --> prove a wrong value; the verifier never panics. The EVM and native builds reach the same verdict on every one of the first 300 rounds: both fold their verdicts into the same digest (`every_target_reaches_the_same_300_verdicts`). Run it with `fe build --backend native ingots/fuzz --out-dir target/fuzz && target/fuzz/fuzz 1000000 1`.
 
@@ -118,11 +118,11 @@ More Fe that carries weight here:
 | Optimism Bedrock `SecureMerkleTrie` (audited) | 514,491 | 485,328 | unsupported | unsupported | unsupported |
 | Lido `StateProofVerifier` (audited, solc 0.6.12) | 344,979 | 330,229 | 314,531 | 158,196 | 200,937 |
 | Lido `StateProofVerifier`, solc 0.8 port | 572,921 | 551,087 | 523,474 | 263,697 | 340,520 |
-| **Ferrotype**, `bytes[]` proofs | 178,012 | 167,526 | 165,956 | 86,971 | 97,723 |
-| **Ferrotype**, packed proofs | 179,871 | 169,633 | 167,679 | 88,050 | 98,944 |
+| **Ferrotype**, `bytes[]` proofs | 178,284 | 167,782 | 166,212 | 87,104 | 97,872 |
+| **Ferrotype**, packed proofs | 180,143 | 169,889 | 167,935 | 88,183 | 99,093 |
 <!-- gas:end -->
 
-Absence proofs cost <!-- n:vs_lido_absent -->47%<!-- /n --> less than Lido's. Counting calldata, a full read transaction costs <!-- n:fe_tx -->314,663<!-- /n --> gas with packed proofs against <!-- n:lido_tx -->485,611<!-- /n --> for Lido's.
+Absence proofs cost <!-- n:vs_lido_absent -->47%<!-- /n --> less than Lido's. Counting calldata, a full read transaction costs <!-- n:fe_tx -->314,935<!-- /n --> gas with packed proofs against <!-- n:lido_tx -->485,611<!-- /n --> for Lido's.
 
 **Soundness.** Of the three verifiers, Ferrotype is the only one that proves absence and rejects a proof whose node list stops early (`bench/results/soundness.json`). The reference `@ethereumjs/trie` `verifyProof` accepts 12 of the 21 structurally malformed vectors and ignores unused nodes; Ferrotype rejects all of them with the expected reason.
 
