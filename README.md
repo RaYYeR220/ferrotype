@@ -124,7 +124,7 @@ More Fe that carries weight here:
 
 Absence proofs cost <!-- n:vs_lido_absent -->47%<!-- /n --> less than Lido's. Counting calldata, a full read transaction costs <!-- n:fe_tx -->314,935<!-- /n --> gas with packed proofs against <!-- n:lido_tx -->485,611<!-- /n --> for Lido's.
 
-**Soundness.** Of the three verifiers, Ferrotype is the only one that proves absence and rejects a proof whose node list stops early (`bench/results/soundness.json`). The reference `@ethereumjs/trie` `verifyProof` accepts 12 of the 21 structurally malformed vectors and ignores unused nodes; Ferrotype rejects all of them with the expected reason.
+**Soundness.** Of the three verifiers, Ferrotype is the only one that proves absence and rejects a proof whose node list stops early (`bench/results/soundness.json`). The reference `@ethereumjs/trie` `verifyProof` accepts 12 of the 20 structurally malformed vectors and ignores unused nodes; Ferrotype rejects all of them with the expected reason.
 
 **Which abstractions are free.** Measured on the USDC read:
 
