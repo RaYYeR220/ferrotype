@@ -1,0 +1,6 @@
+out/
+target/
+bench/out/
+bench/cache/
+**/node_modules/
+.git/

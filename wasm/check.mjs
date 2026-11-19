@@ -2,7 +2,7 @@
 // and checks each verdict, so the WebAssembly build is held to the same
 // expectations as the EVM and native builds.
 //
-//   node wasm/check.mjs target/wasm/ferrotype.wasm
+//   node wasm/check.mjs web/public/ferrotype.wasm
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,7 +10,7 @@ import { loadFerrotype, ProofRejected } from "../web/src/ferrotype.js";
 import { encodeHeader } from "../web/src/header.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const wasm = process.argv[2] ?? path.join(root, "target/wasm/ferrotype.wasm");
+const wasm = process.argv[2] ?? path.join(root, "web/public/ferrotype.wasm");
 const fe = await loadFerrotype(fs.readFileSync(wasm));
 
 let pass = 0;

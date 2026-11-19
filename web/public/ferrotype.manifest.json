@@ -1,0 +1,158 @@
+{
+  "manifest_version": 1,
+  "module": {
+    "file": "ferrotype.wasm",
+    "sha256": "1f178760c6f1820882b49ef371ed29d062df1c21befad7b2fedd966830a75f9b",
+    "size": 60629,
+    "initial_memory_pages": 18
+  },
+  "contract_version": 1,
+  "optimization": "2",
+  "compiler": "fe 26.6.0 (5b3f96a)",
+  "imports": [],
+  "exports": [
+    {
+      "name": "alloc",
+      "kind": "function",
+      "role": "allocator",
+      "params": [
+        {
+          "name": "size",
+          "type": "u32",
+          "wasm": ["i32"]
+        }
+      ],
+      "result": {
+        "type": "u32",
+        "wasm": ["i32"]
+      }
+    },
+    {
+      "name": "arena_mark",
+      "kind": "function",
+      "role": "allocator",
+      "params": [],
+      "result": {
+        "type": "u32",
+        "wasm": ["i32"]
+      }
+    },
+    {
+      "name": "arena_release",
+      "kind": "function",
+      "role": "allocator",
+      "params": [
+        {
+          "name": "mark",
+          "type": "u32",
+          "wasm": ["i32"]
+        }
+      ],
+      "result": null
+    },
+    {
+      "name": "balance_slot",
+      "kind": "function",
+      "params": [
+        {
+          "name": "layout",
+          "type": "u32",
+          "wasm": ["i32"]
+        },
+        {
+          "name": "base",
+          "type": "HostText",
+          "wasm": ["i32", "i32"]
+        },
+        {
+          "name": "holder",
+          "type": "HostText",
+          "wasm": ["i32", "i32"]
+        }
+      ],
+      "result": {
+        "type": "Reply",
+        "wasm": ["i64"]
+      }
+    },
+    {
+      "name": "lookup",
+      "kind": "function",
+      "params": [
+        {
+          "name": "root",
+          "type": "HostText",
+          "wasm": ["i32", "i32"]
+        },
+        {
+          "name": "path",
+          "type": "HostText",
+          "wasm": ["i32", "i32"]
+        },
+        {
+          "name": "proof",
+          "type": "HostText",
+          "wasm": ["i32", "i32"]
+        }
+      ],
+      "result": {
+        "type": "Reply",
+        "wasm": ["i64"]
+      }
+    },
+    {
+      "name": "memory",
+      "kind": "memory"
+    },
+    {
+      "name": "read_header",
+      "kind": "function",
+      "params": [
+        {
+          "name": "header",
+          "type": "HostText",
+          "wasm": ["i32", "i32"]
+        }
+      ],
+      "result": {
+        "type": "Reply",
+        "wasm": ["i64"]
+      }
+    },
+    {
+      "name": "read_storage",
+      "kind": "function",
+      "params": [
+        {
+          "name": "state_root",
+          "type": "HostText",
+          "wasm": ["i32", "i32"]
+        },
+        {
+          "name": "account",
+          "type": "HostText",
+          "wasm": ["i32", "i32"]
+        },
+        {
+          "name": "slot",
+          "type": "HostText",
+          "wasm": ["i32", "i32"]
+        },
+        {
+          "name": "account_proof",
+          "type": "HostText",
+          "wasm": ["i32", "i32"]
+        },
+        {
+          "name": "storage_proof",
+          "type": "HostText",
+          "wasm": ["i32", "i32"]
+        }
+      ],
+      "result": {
+        "type": "Reply",
+        "wasm": ["i64"]
+      }
+    }
+  ]
+}
