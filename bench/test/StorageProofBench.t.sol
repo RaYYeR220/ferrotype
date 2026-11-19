@@ -70,6 +70,7 @@ contract StorageProofBench {
         impls.push(Impl("optimism", vm.deployCode("OptimismStateReader.sol:OptimismStateReader"), false, true));
         impls.push(Impl("lido", vm.deployCode("LidoStateReader.sol:LidoStateReader"), false, false));
         impls.push(Impl("lido-0.8", vm.deployCode("LidoStateReader08.sol:LidoStateReader08"), false, false));
+        impls.push(Impl("curve-xdao", vm.deployCode("CurveXdaoStateReader.sol:CurveXdaoStateReader"), false, false));
         address fe = _deployFe();
         impls.push(Impl("ferrotype", fe, false, false));
         impls.push(Impl("ferrotype-packed", fe, true, false));
@@ -218,11 +219,25 @@ contract StorageProofBench {
                             o.ok ? string.concat(", returned ", vm.toString(o.value)) : string.concat(" (", o.err, ")")
                         )
                     );
+                    bool known = _knownAcceptance(impl.name, m);
                     if (o.ok) {
-                        if (!_knownAcceptance(impl.name, m)) {
+                        if (!known) {
                             revert(string.concat(impl.name, " accepted a broken proof: ", MUTATIONS[m]));
                         }
                         vm.assertEq(o.value, 0, "a known acceptance should forge absence, i.e. return 0");
+                    } else {
+                        // The known acceptances are pinned both ways: if one stops reproducing, the
+                        // control below no longer shows anything, so the run fails.
+                        if (known) {
+                            revert(string.concat(impl.name, " no longer accepts ", MUTATIONS[m], ": ", o.err));
+                        }
+                        // Curve's patched copy must reject the early-ending proofs through its fix.
+                        if (_isEarlyEnding(m) && _is(impl.name, "curve-xdao")) {
+                            vm.assertTrue(
+                                _is(o.err, "NoChild()"),
+                                string.concat("curve-xdao should reject ", MUTATIONS[m], " with NoChild(), got ", o.err)
+                            );
+                        }
                     }
                 }
                 string memory row = vm.serializeString(key, "outcome", outcome);
@@ -250,13 +265,23 @@ contract StorageProofBench {
         return p;
     }
 
-    /// @dev Broken proofs a vendored library is known to accept. Lido's MerklePatriciaProofVerifier
-    ///      (both builds) treats a proof that stops right after a branch node as a proof of
-    ///      absence: the loop runs out of nodes and returns empty bytes, which StateProofVerifier
-    ///      reads as "slot absent" (value 0) or "account absent". Any other acceptance fails here.
+    /// @dev Broken proofs a vendored library is known to accept, and must keep accepting. Lido's
+    ///      MerklePatriciaProofVerifier (both builds) treats a proof that stops right after a branch
+    ///      node as a proof of absence: the loop runs out of nodes and returns empty bytes, which
+    ///      StateProofVerifier reads as "slot absent" (value 0) or "account absent". Curve's patched
+    ///      copy in curve-xdao reverts NoChild() there, so it is not listed. Any other acceptance,
+    ///      and any rejection of a listed one, fails the run.
     function _knownAcceptance(string memory impl, uint256 m) internal pure returns (bool) {
-        bool lido = keccak256(bytes(impl)) == keccak256("lido") || keccak256(bytes(impl)) == keccak256("lido-0.8");
-        return lido && (m == 2 || m == 3);
+        return (_is(impl, "lido") || _is(impl, "lido-0.8")) && _isEarlyEnding(m);
+    }
+
+    /// @dev The two mutations that end a proof right after a branch node whose child is not empty.
+    function _isEarlyEnding(uint256 m) internal pure returns (bool) {
+        return m == 2 || m == 3;
+    }
+
+    function _is(string memory a, string memory b) internal pure returns (bool) {
+        return keccak256(bytes(a)) == keccak256(bytes(b));
     }
 
     // ------------------------------------------------------------------------------------------
@@ -331,7 +356,35 @@ contract StorageProofBench {
         // Ferrotype: InvalidProof(uint8), with or without its selector.
         if (selector == 0xf7f9ec62 && ret.length == 36) return _invalidProof(abi.decode(_slice(ret, 4), (uint256)), "");
         if (ret.length == 32) return _invalidProof(abi.decode(ret, (uint256)), " (no selector)");
+        if (ret.length == 4) {
+            string memory name = _curveXdaoError(selector);
+            if (bytes(name).length != 0) return name;
+        }
         return string.concat("revert data ", vm.toString(ret));
+    }
+
+    /// @dev The argument-free custom errors of curve-xdao's MerklePatriciaProofVerifier and
+    ///      StateProofVerifier that storageAt can reach.
+    function _curveXdaoError(bytes4 selector) internal pure returns (string memory) {
+        string[13] memory names = [
+            "BadEmptyRootHash()",
+            "BadRootHash()",
+            "BadNodeHash()",
+            "DivergentNode()",
+            "LeafNode()",
+            "NotNibble()",
+            "ExtensionAtLastLevel()",
+            "NotLastLevel()",
+            "NoChild()",
+            "EmptyInput()",
+            "BadSkipNibbles()",
+            "Unreachable()",
+            "BadAccount()"
+        ];
+        for (uint256 i = 0; i < names.length; ++i) {
+            if (bytes4(keccak256(bytes(names[i]))) == selector) return names[i];
+        }
+        return "";
     }
 
     function _invalidProof(uint256 code, string memory suffix) internal pure returns (string memory) {

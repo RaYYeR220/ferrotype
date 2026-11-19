@@ -23,6 +23,13 @@
     },
     {
       "case": "usdc-holder",
+      "implementation": "curve-xdao",
+      "mutation": "wrong-state-root",
+      "note": "BadRootHash()",
+      "outcome": "rejected"
+    },
+    {
+      "case": "usdc-holder",
       "implementation": "ferrotype",
       "mutation": "wrong-state-root",
       "note": "InvalidProof(2) HashMismatch",
@@ -58,6 +65,13 @@
     },
     {
       "case": "usdc-holder",
+      "implementation": "curve-xdao",
+      "mutation": "tampered-storage-leaf",
+      "note": "BadNodeHash()",
+      "outcome": "rejected"
+    },
+    {
+      "case": "usdc-holder",
       "implementation": "ferrotype",
       "mutation": "tampered-storage-leaf",
       "note": "InvalidProof(2) HashMismatch",
@@ -93,6 +107,13 @@
     },
     {
       "case": "usdc-holder",
+      "implementation": "curve-xdao",
+      "mutation": "truncated-storage-proof",
+      "note": "NoChild()",
+      "outcome": "rejected"
+    },
+    {
+      "case": "usdc-holder",
       "implementation": "ferrotype",
       "mutation": "truncated-storage-proof",
       "note": "InvalidProof(3) MissingNode",
@@ -125,6 +146,13 @@
       "mutation": "truncated-account-proof",
       "outcome": "accepted",
       "value": "0x0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "case": "usdc-holder",
+      "implementation": "curve-xdao",
+      "mutation": "truncated-account-proof",
+      "note": "NoChild()",
+      "outcome": "rejected"
     },
     {
       "case": "usdc-holder",

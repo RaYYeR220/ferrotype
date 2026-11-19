@@ -16,6 +16,7 @@ NAMES = {
     "optimism": "Optimism Bedrock `SecureMerkleTrie` (audited)",
     "lido": "Lido `StateProofVerifier` (audited, solc 0.6.12)",
     "lido-0.8": "Lido `StateProofVerifier`, solc 0.8 port",
+    "curve-xdao": "Curve `curve-xdao` (patched, 2025, solc 0.8.18)",
     "ferrotype": "**Ferrotype**, `bytes[]` proofs",
     "ferrotype-packed": "**Ferrotype**, packed proofs",
 }

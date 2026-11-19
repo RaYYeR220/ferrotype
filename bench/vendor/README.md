@@ -54,9 +54,36 @@ The same three files ported to Solidity 0.8 by Curve in 2022. The changes are pr
 | `contracts/MerklePatriciaProofVerifier.sol` | `062820347d43b2dba054e984230e8fcd8719986f1d17869f0381cfc1d236d518` |
 | `contracts/RLPReader.sol` | `6b193c8ad461e42fc36602f05dae786ec1a0ea348bdc7167ee0aff21b4914d9b` |
 
+## Curve, patched: `curve-xdao/`
+
+Curve's later copy of Lido's two libraries, with the fix for proofs that end right after a branch node. The bench runs it as a control: apart from that fix, custom errors and style changes, the algorithm is the one in `lido/` and `curve-port/`.
+
+- Upstream: [curvefi/curve-xdao](https://github.com/curvefi/curve-xdao), `contracts/libs/`
+- Pinned: commit `14a4d1ba8e7b011e4a2dcf6060e39cfee9786da2` (`master` HEAD on 2026-11-19, a merge from 2026-08-20). The fix is `c82541cc12cdbd1eab41ba08305279be043e1ad1` (Roman Agureev, 2025-04-03, "fix: MPT proof verifier"). It adds a bare `revert()` when the last node of a proof is a branch node whose child at the key's nibble is not empty. `9195fa966575c8926450cf2b043fcd16f49b489d` (2025-08-19) names that revert `NoChild()` and adds `revert Unreachable()` after the loop. The last commit to touch either file is `cf033982e49f28f70350a8213ffbf97ad02b8072` (2025-09-15).
+- License: MIT. Both files carry `SPDX-License-Identifier: MIT`. `curve-xdao/LICENSE.txt` is the repository's root `LICENSE.txt` at that commit, an MIT license (Copyright (c) 2023 Curve Finance). This repository has no all-rights-reserved notice, unlike `curve-merkle-oracle`. `MerklePatriciaProofVerifier.sol` says it is copied from Lido's `1033b3e`, which is adapted from lorenzb/proveth `c74b20e`.
+- Pragma: `0.8.18` exactly. Compiled with solc 0.8.18. That solc predates shanghai, so forge targets paris for it.
+
+| File | sha256 |
+|---|---|
+| `contracts/libs/MerklePatriciaProofVerifier.sol` | `d3e421fb7d9bd1eac23aad974c37bbdeaa12de2e28e80393446520b76562b8ea` |
+| `contracts/libs/StateProofVerifier.sol` | `a78e2d1fe239f4f06d2db50b85897278e789daf3f2b7f1c58d06bd6dca43bc4a` |
+| `LICENSE.txt` | `93b1500b944e2fb2542fb5d222dd0607a0c7c4dfb67216e0e753a354e14e97d4` |
+
+Both files import `hamdiallam/Solidity-RLP@2.0.7/contracts/RLPReader.sol`, which the repository declares in `brownie-config.yaml` and does not include. `curve-xdao/solidity-rlp/` holds that dependency.
+
+- Upstream: [hamdiallam/Solidity-RLP](https://github.com/hamdiallam/Solidity-RLP), `contracts/RLPReader.sol`
+- Pinned: tag `v2.0.7` = commit `ca4929893192fc1568ad693b9c7e43d3b59ef27c` (2023-02-13, "support solidity 0.8.18")
+- License: Apache-2.0. `solidity-rlp/LICENSE` is the repository's license at that commit, byte-identical to `../solidity-rlp/LICENSE`. The file keeps its SPDX header and author notice.
+- Pragma: `>=0.5.10 <=0.8.18`.
+
+| File | sha256 |
+|---|---|
+| `solidity-rlp/contracts/RLPReader.sol` | `b015fdcd8dd89ef0365ced9f733bde9edc20b6ec57259855aee4824d69a8ee07` |
+| `solidity-rlp/LICENSE` | `c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4` |
+
 ## Checking the copies
 
 ```sh
 cd bench
-sha256sum vendor/*/src/libraries/*.sol vendor/*/src/libraries/*/*.sol vendor/*/contracts/*.sol
+sha256sum vendor/*/src/libraries/*.sol vendor/*/src/libraries/*/*.sol vendor/*/contracts/*.sol \n  vendor/curve-xdao/contracts/libs/*.sol vendor/curve-xdao/solidity-rlp/contracts/*.sol
 ```

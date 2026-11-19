@@ -14,7 +14,7 @@ Every claim in the README and on the demo page, with how strong its evidence is 
 | Of 1,000,000 damaged mainnet proofs none proves a wrong value, and the verifier never panics | REPRODUCIBLE | `target/fuzz/fuzz 1000000 1` (after `scripts/build.sh`) |
 | One read costs about half what Lido's audited verifier spends and a third of Optimism's, on the same proofs (exact figures in the README's gas table) | REPRODUCIBLE | `cd bench && forge test && python3 render.py` → `bench/results/gas.md` |
 | Optimism's `MerkleTrie` cannot prove an empty slot or a missing account | REPRODUCIBLE | the same benchmark; the revert reasons are in `bench/results/gas.json` |
-| Lido's verifier accepts a proof whose node list stops early after a branch node, reading the slot as zero; Optimism's and Ferrotype reject it | REPRODUCIBLE | `test_rejectsInvalidProofs` in `bench/test/StorageProofBench.t.sol` → `bench/results/soundness.json` |
+| Lido's verifier accepts a proof whose node list stops early after a branch node, reading the slot as zero; Curve's patched verifier, Optimism's and Ferrotype reject it. This reproduces a publicly disclosed bug class (Roman Agureev, Curve, March 2025; [ChainSecurity's write-up](https://www.chainsecurity.com/blog/when-empty-means-valid-exploiting-mpt-proof-verification-for-an-alternative-truth)); it is not a new finding | REPRODUCIBLE | `test_rejectsInvalidProofs` in `bench/test/StorageProofBench.t.sol` → `bench/results/soundness.json` |
 | `@ethereumjs/trie`'s `verifyProof` accepts 12 of the 20 structurally malformed vectors, 2 of the 8 bad references and all 21 proofs with unused nodes | REPRODUCIBLE | `node scripts/vectors/gen.mjs` prints these counts under `ejs` |
 | Branch decoding in one pass saved 47% of the gas; `-O 2` saves 0.5%; unchecked arithmetic would save 1.0% | REPRODUCIBLE | rebuild at the commit before `Decode branch nodes in one pass` and rerun the benchmark; build with `-O 1`; add `#[arithmetic(unchecked)]` to `rlp::item_at` and `rlp::branch_child` |
 | The library has no `unsafe` code | REPRODUCIBLE | `grep -rn unsafe ingots/ferrotype/src` finds nothing |
@@ -42,5 +42,5 @@ Every claim in the README and on the demo page, with how strong its evidence is 
 - That `Plebiscite`'s economic design (quorum, snapshot age, one call per proposal) suits a real treasury.
 - That every token's storage layout is supported: rebasing tokens and custom layouts are not.
 - That the CLI signs or sends transactions: it prints calldata for a wallet or `cast` to send.
-- Anything about deployed contracts that use the Lido or Optimism verifiers: the benchmark measures the libraries on fixed inputs, nothing more.
+- Anything about deployed contracts that use the Lido or Optimism verifiers, or a new vulnerability: the early-ending-proof behaviour was found and disclosed by others in 2025, and the benchmark only measures the libraries on fixed inputs.
 - Gas figures for proofs other than the five in `fixtures/mainnet`; trie depth changes them.

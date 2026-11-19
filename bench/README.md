@@ -8,8 +8,9 @@ This bench measures what it costs to read one storage slot of a mainnet contract
 | Optimism Bedrock `SecureMerkleTrie` + `RLPReader` | `op-contracts/v9.0.0` | 0.8.37 |
 | Lido `StateProofVerifier` + `MerklePatriciaProofVerifier`, as audited | `1033b3e`, with Solidity-RLP 2.0.5 | 0.6.12 |
 | The same Lido code, Curve's 0.8 port | `curvefi/curve-merkle-oracle@b395fb2` | 0.8.37 |
+| Curve's patched copy of the same code (`curve-xdao`), the control | `curvefi/curve-xdao@14a4d1b`, with Solidity-RLP 2.0.7 | 0.8.18 |
 
-All Solidity builds use the optimizer at 200 runs, no via-IR, and `evm_version = "osaka"`. Each solc version comes from the wrapper's exact pragma. 0.8.37 is the newest release forge 1.8.3 can resolve. 0.6.12 is the compiler Lido shipped and audited. Commits, licenses and checksums for the vendored code are in [`vendor/README.md`](vendor/README.md).
+All Solidity builds use the optimizer at 200 runs, no via-IR, and `evm_version = "osaka"`. Each solc version comes from the wrapper's exact pragma. 0.8.37 is the newest release forge 1.8.3 can resolve. 0.6.12 is the compiler Lido shipped and audited. 0.8.18 is the exact pragma of Curve's patched copy, and since that solc predates shanghai, forge targets paris for it. Commits, licenses and checksums for the vendored code are in [`vendor/README.md`](vendor/README.md).
 
 ## Run
 
@@ -19,7 +20,7 @@ forge test -vv        # asserts every value, prints a line per call, writes resu
 python render.py      # results/gas.json + results/soundness.json -> results/gas.md
 ```
 
-You need forge (tested with 1.8.3) and Python 3. On first run, forge downloads solc 0.8.37 and 0.6.12. The bench has no dependencies: `test/utils/Vm.sol` declares the few cheatcodes it uses, so it does not need forge-std.
+You need forge (tested with 1.8.3) and Python 3. On first run, forge downloads solc 0.8.37, 0.8.18 and 0.6.12. The bench has no dependencies: `test/utils/Vm.sol` declares the few cheatcodes it uses, so it does not need forge-std.
 
 The Fe rows come from `../out/StateReader.bin`, which holds hex init code. Build it from the `ferrotype/` directory with `fe build ingots/contracts --out-dir out`. If the file is missing, the Fe rows show as `skipped` and everything else still runs.
 
@@ -33,7 +34,7 @@ The Fe rows come from `../out/StateReader.bin`, which holds hex init code. Build
 | `absent-account` | `absent-account.json` | The account does not exist, so the state proof proves absence. The account counts as empty and the slot is 0. |
 | `eoa-empty-storage` | `eoa-empty-storage.json` | An EOA with the empty storage root and an empty storage proof. |
 
-`test_rejectsInvalidProofs` also breaks the `usdc-holder` proof four ways: a wrong state root, a tampered leaf, a truncated storage proof, and a truncated account proof sent with no storage proof. It records whether each verifier rejects each broken proof.
+`test_rejectsInvalidProofs` also breaks the `usdc-holder` proof four ways: a wrong state root, a tampered leaf, a truncated storage proof, and a truncated account proof sent with no storage proof. It records whether each verifier rejects each broken proof, and fails on any outcome other than the known ones below.
 
 ## What is measured
 
@@ -41,7 +42,7 @@ The Fe rows come from `../out/StateReader.bin`, which holds hex init code. Build
 - **`calldata_bytes`** and **`calldata_gas`**: the full ABI-encoded call, priced at 16 gas per nonzero byte and 4 per zero byte.
 - **`tx_gas`**: 21,000 + max(calldata gas + execution gas, EIP-7623 floor). The floor is 10 gas per token, and it never binds for these calls.
 
-The wrappers in `src/` give Optimism and Lido the same `storageAt(bytes32,address,bytes32,bytes[],bytes[])` interface that Ferrotype exposes. Each wrapper uses its library's own API.
+The wrappers in `src/` give Optimism, Lido and Curve the same `storageAt(bytes32,address,bytes32,bytes[],bytes[])` interface that Ferrotype exposes. Each wrapper uses its library's own API.
 
 ## Reading the results
 
@@ -49,5 +50,6 @@ The wrappers in `src/` give Optimism and Lido the same `storageAt(bytes32,addres
 
 - **Optimism proves inclusion only.** `MerkleTrie.get` reverts on every exclusion proof. That covers a zero slot, an absent account, and an empty storage trie, so those rows read `unsupported`, with the library's revert reason.
 - **Lido's two builds differ only in the compiler.** Both builds run the same source. On `usdc-holder` the 0.8 build costs 572,921 gas against 344,979 on 0.6.12. Built with solc 0.7.6, the same 0.8 port costs 344,212, so the gap is 0.8's checked arithmetic.
-- **Lido's verifier accepts truncated proofs.** If a proof stops right after a branch node, `MerklePatriciaProofVerifier.extractProofValue` runs out of nodes and returns empty bytes. `StateProofVerifier` reads that as "absent", so the slot reads as 0 or the account as nonexistent. Both builds behave this way, and the soundness test pins it. Curve's later copy of this library in `curvefi/curve-xdao` adds an explicit `NoChild` revert for this case. Optimism and Ferrotype reject both truncations.
+- **Lido's verifier accepts truncated proofs.** If a proof stops right after a branch node, `MerklePatriciaProofVerifier.extractProofValue` runs out of nodes and returns empty bytes. `StateProofVerifier` reads that as "absent", so the slot reads as 0 or the account as nonexistent. Both builds behave this way, and the soundness test pins it: the run fails if either build stops accepting. Optimism and Ferrotype reject both truncations.
+- **Curve's patched copy is the control.** Roman Agureev of Curve found this bug class on 2025-03-11, and ChainSecurity coordinated the disclosure ([postmortem](https://www.chainsecurity.com/blog/when-empty-means-valid-exploiting-mpt-proof-verification-for-an-alternative-truth), [write-up](https://hackmd.io/@agureevroman/Sk9gl-zVll), [Curve's post](https://news.curve.finance/curve-block-oracle/)). Curve fixed its copy of the library in `curvefi/curve-xdao` (`c82541c`): when the last node of a proof is a branch node and the key's child there is not empty, the call reverts, now with `NoChild()`. The bench runs that patched copy on the same proofs. It rejects both truncations with `NoChild()`, and the test fails if it accepts either. On valid proofs it returns the same values as Lido's builds. It costs 597,272 gas on `usdc-holder`, 24,351 more than the unpatched 0.8 port. Rebuilt with solc 0.8.37 it costs 574,306, 1,385 more than the port, so most of the gap is the older compiler.
 - **Packed calldata trades execution for bytes.** `storageAtPacked` drops the ABI offsets and lengths. On `usdc-holder` that saves 1,280 bytes and 5,840 calldata gas. It spends 1,943 more gas walking the nodes, so the full transaction comes out 3,897 gas cheaper.

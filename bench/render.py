@@ -15,6 +15,7 @@ IMPLEMENTATIONS = {
     "optimism": "Optimism Bedrock `SecureMerkleTrie` (solc 0.8.37)",
     "lido": "Lido `StateProofVerifier` (solc 0.6.12, as audited)",
     "lido-0.8": "Lido `StateProofVerifier`, 0.8 port (solc 0.8.37)",
+    "curve-xdao": "Curve `curve-xdao` (patched, 2025)",
     "ferrotype": "Ferrotype (Fe), `storageAt` with `bytes[]`",
     "ferrotype-packed": "Ferrotype (Fe), `storageAtPacked`",
 }
@@ -33,6 +34,10 @@ MUTATIONS = {
     "truncated-storage-proof": "drop the storage proof's last node.",
     "truncated-account-proof": "drop the account proof's last node and send no storage proof.",
 }
+
+# Both truncations end the proof right after a branch node whose child is not empty.
+EARLY_ENDING = ["truncated-storage-proof", "truncated-account-proof"]
+CONTROL = "curve-xdao"
 
 DASH = "—"
 
@@ -127,6 +132,30 @@ def soundness_table(rows):
             else:
                 cells.append("rejected")
         out.append(f"| {label(IMPLEMENTATIONS, impl)} | " + " | ".join(cells) + " |")
+    out.append("")
+    out += early_ending_note(impls, [m for m in EARLY_ENDING if m in mutations], by_key)
+    return out
+
+
+def early_ending_note(impls, early, by_key):
+    """Who accepts a proof that stops after a branch node, and how the patched control rejects it."""
+    if not early:
+        return []
+    out = ["Both truncations end the proof right after a branch node whose child is not empty."]
+    accepted = [i for i in impls if any(by_key.get((i, m), {}).get("outcome") == "accepted" for m in early)]
+    if accepted:
+        out.append(
+            "Accepted as proofs of absence, so the slot reads as 0: "
+            + "; ".join(label(IMPLEMENTATIONS, i) for i in accepted)
+            + "."
+        )
+    control = [by_key.get((CONTROL, m)) for m in early]
+    if all(r is not None and r["outcome"] == "rejected" for r in control):
+        reasons = ", ".join(f"`{n}`" for n in sorted({r.get("note", "?") for r in control}))
+        out.append(
+            f"{label(IMPLEMENTATIONS, CONTROL)} is the same library with Curve's 2025 fix, "
+            f"and rejects both with {reasons}."
+        )
     out.append("")
     return out
 

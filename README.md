@@ -9,7 +9,7 @@ A DAO wants USDC holders to vote on its treasury. USDC has no checkpoints and ne
 Every contract's storage is committed to by the block header, through two Merkle-Patricia tries: the state trie holds the account, the account's storage trie holds the slot. So any contract could, in principle, read any other contract's state at any recent block, from a proof. In practice:
 
 - The machinery is missing in Fe. The Fe team's own words: *"Merkle-Patricia proofs of another contract's storage: the precompiles are wrapped in std, but most of the machinery around them is still waiting to be written."*
-- The Solidity machinery is expensive or incomplete. Optimism's audited `MerkleTrie` cannot prove that a slot is empty, so a zero balance or a missing account cannot be read at all. Lido's audited `StateProofVerifier` proves absence, but accepts a proof whose node list stops early after a branch node, reading the slot as zero. Both copy every node into fresh memory before decoding it.
+- The Solidity machinery is expensive or incomplete. Optimism's audited `MerkleTrie` cannot prove that a slot is empty, so a zero balance or a missing account cannot be read at all. Lido's audited `StateProofVerifier` proves absence, but accepts a proof whose node list stops early after a branch node, reading the slot as zero: the class of bug [Roman Agureev of Curve found](https://hackmd.io/@agureevroman/Sk9gl-zVll) in March 2025, whose disclosure ChainSecurity coordinated ([write-up](https://www.chainsecurity.com/blog/when-empty-means-valid-exploiting-mpt-proof-verification-for-an-alternative-truth)). Both copy every node into fresh memory before decoding it.
 - The off-chain half is written twice. The tool that fetches proofs from a node, the keeper that submits them and the UI that previews them each reimplement the verifier in another language, and the copies drift apart.
 
 ## Approach
@@ -118,13 +118,14 @@ More Fe that carries weight here:
 | Optimism Bedrock `SecureMerkleTrie` (audited) | 514,491 | 485,328 | unsupported | unsupported | unsupported |
 | Lido `StateProofVerifier` (audited, solc 0.6.12) | 344,979 | 330,229 | 314,531 | 158,196 | 200,937 |
 | Lido `StateProofVerifier`, solc 0.8 port | 572,921 | 551,087 | 523,474 | 263,697 | 340,520 |
+| Curve `curve-xdao` (patched, 2025, solc 0.8.18) | 597,272 | 573,940 | 546,255 | 275,932 | 353,841 |
 | **Ferrotype**, `bytes[]` proofs | 178,284 | 167,782 | 166,212 | 87,104 | 97,872 |
 | **Ferrotype**, packed proofs | 180,143 | 169,889 | 167,935 | 88,183 | 99,093 |
 <!-- gas:end -->
 
 Absence proofs cost <!-- n:vs_lido_absent -->47%<!-- /n --> less than Lido's. Counting calldata, a full read transaction costs <!-- n:fe_tx -->314,935<!-- /n --> gas with packed proofs against <!-- n:lido_tx -->485,611<!-- /n --> for Lido's.
 
-**Soundness.** Of the three verifiers, Ferrotype is the only one that proves absence and rejects a proof whose node list stops early (`bench/results/soundness.json`). The reference `@ethereumjs/trie` `verifyProof` accepts 12 of the 20 structurally malformed vectors and ignores unused nodes; Ferrotype rejects all of them with the expected reason.
+**Soundness.** Of the three verifiers, Ferrotype is the only one that proves absence and rejects a proof whose node list stops early (`bench/results/soundness.json`). The benchmark reproduces this publicly disclosed bug class on real proofs, with Curve's patched verifier as a control. The reference `@ethereumjs/trie` `verifyProof` accepts 12 of the 20 structurally malformed vectors and ignores unused nodes; Ferrotype rejects all of them with the expected reason.
 
 **Which abstractions are free.** Measured on the USDC read:
 

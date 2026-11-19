@@ -7,8 +7,8 @@ libs = []
 auto_detect_remappings = false
 
 # Every contract compiles with the optimizer on at 200 runs. The solc version comes from each
-# wrapper's exact pragma: 0.8.38 for the Bedrock libraries and the 0.8 port of Lido's verifier,
-# 0.6.12 for Lido's verifier as audited and deployed.
+# wrapper's exact pragma: 0.8.37 for the Bedrock libraries and the 0.8 port of Lido's verifier,
+# 0.6.12 for Lido's verifier as audited and deployed, 0.8.18 for Curve's patched curve-xdao copy.
 optimizer = true
 optimizer_runs = 200
 via_ir = false
@@ -23,6 +23,9 @@ remappings = [
   "hamdiallam/Solidity-RLP@2.0.5/=vendor/solidity-rlp/",
   "@lido/=vendor/lido/contracts/",
   "@lido-0.8/=vendor/curve-port/contracts/",
+  # Curve's patched copy imports Solidity-RLP 2.0.7 by its brownie package path.
+  "hamdiallam/Solidity-RLP@2.0.7/=vendor/curve-xdao/solidity-rlp/",
+  "@curve-xdao/=vendor/curve-xdao/contracts/libs/",
 ]
 
 fs_permissions = [
