@@ -2009,20 +2009,6 @@
     "base": "inclusion/n1-full/full/0"
   },
   {
-    "name": "invalid/empty-root/with-0x80",
-    "root": "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
-    "key": "0x000000000000000000000000000000000000000000000000000000000009afce",
-    "path": "0xac7f54105d5b2f66180511c53e5d6ed70da4413dd7742d3e0631ab357df0f783",
-    "proof": [
-      "0x80"
-    ],
-    "expect": {
-      "error": "Malformed"
-    },
-    "mutation": "empty-root-with-0x80",
-    "base": "inclusion/n1-full/full/0"
-  },
-  {
     "name": "invalid/node-3-items/inclusion/n1-full/full/0",
     "root": "0xf61663fdc0bfe909aadaadd4d579445481809f4fa5335e2c10c6e951cfa56939",
     "key": "0x000000000000000000000000000000000000000000000000000000000009afce",

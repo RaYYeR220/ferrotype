@@ -150,6 +150,11 @@ pub fn lookup_observed<N: Nodes, O: Observer>(_ buf: MemSpan, nodes: mut N, root
             }
         }
         if !node.list {
+            // The root node of an empty trie is the empty string (0x80). Some
+            // clients prove an empty trie with it, others with no node at all.
+            if depth == 0 && !want.inline && node.len == 0 && want.hash == EMPTY_TRIE_ROOT {
+                return finish(buf, nodes: mut nodes, result: Lookup::Absent)
+            }
             return Result::Err(ProofError::Malformed)
         }
 

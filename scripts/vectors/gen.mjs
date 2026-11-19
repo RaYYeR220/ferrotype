@@ -498,6 +498,16 @@ async function main() {
     assert((await empty.proof(key)).length === 0, 'ethereumjs empty-trie proof is not []')
     STATS.ejsEmptyTrie = await ejsVerify(empty.root, key, [])
     exclusion.push(c)
+    // The same absence, proven with the empty root node itself (anvil and
+    // reth answer eth_getProof for an empty storage trie with ["0x80"]).
+    const c80 = baseCase(`exclusion/empty-trie/${i}/root-node`, hexToBytes(EMPTY_ROOT_HEX), key, [Uint8Array.from([0x80])], { found: false }, {
+      trie: 'empty',
+      trieSize: 0,
+      shape: 'empty-trie',
+    })
+    const v80 = verify(c80.root, c80.path, c80.proof)
+    assert(!compareExpect(v80.result, c80.expect) && v80.trace.shape === 'empty-trie', `${c80.name}: ref_verify disagrees`)
+    exclusion.push(c80)
   }
   const quota = { 'empty-slot': 2, 'leaf-diverge': 2, 'ext-diverge': 3 }
   STATS.exclusionSearch = {}
@@ -652,7 +662,6 @@ async function main() {
     const b = recs.incl[0]
     const empty = hexToBytes(EMPTY_ROOT_HEX)
     invalid.push(await invalidCase('invalid/empty-root/with-node', empty, b.key, [b.proof[0]], 'HashMismatch', { mutation: 'empty-root-with-node', base: b.c.name }))
-    invalid.push(await invalidCase('invalid/empty-root/with-0x80', empty, b.key, [Uint8Array.from([0x80])], 'Malformed', { mutation: 'empty-root-with-0x80', base: b.c.name }))
   }
   // 9. structurally bad nodes, re-hashed up to a new root so every hash still checks out
   {

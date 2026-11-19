@@ -160,6 +160,13 @@ function walk(rootB, key, entries, trace) {
       const idx = trace.used++
       const enc = entries[idx]
       if (!eq(keccak256(enc), ref.hash)) fail('HashMismatch', `entry ${idx}`)
+      // The root node of an empty trie is the empty string itself (0x80).
+      // Some clients prove an empty trie with it, others with no entry at all.
+      if (depth === 0 && enc.length === 1 && enc[0] === 0x80) {
+        trace.nodes.push({ entry: idx, inline: false, depth, len: 1, type: 'empty-root' })
+        trace.shape = 'empty-trie'
+        return { found: false }
+      }
       node = decodeRlp(enc)
       info = { entry: idx, inline: false, depth, refFrom: from, len: enc.length }
     } else {
