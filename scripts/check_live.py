@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Asks the contracts deployed on Sepolia, with eth_call only (no key, no funds).
 
-    python3 scripts/check_live.py [RPC]
+    python3 scripts/check_live.py [RPC ...]
 
 Checks, against deployments/sepolia.json:
   - StateReader proves each saved mainnet read (fixtures/mainnet) against its
@@ -19,7 +19,8 @@ import urllib.error
 import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-RPC = sys.argv[1] if len(sys.argv) > 1 else "https://sepolia.gateway.tenderly.co"
+# eth_call at the latest block works on any node; the next one is a fallback.
+RPCS = sys.argv[1:] or ["https://ethereum-sepolia-rpc.publicnode.com", "https://sepolia.gateway.tenderly.co"]
 REASONS = {1: "Malformed", 2: "HashMismatch", 3: "MissingNode", 4: "ExtraNodes", 5: "BadReference"}
 STORAGE_AT_PACKED = "fe3242a8"  # storageAtPacked(bytes32,address,bytes32,bytes,bytes)
 VOTING_POWER = "08e038f3"  # votingPower(uint256,address,bytes)
@@ -52,9 +53,15 @@ def packed(nodes):
 def call(to, data):
     """Returns ("ok", hex) or ("revert", reason)."""
     body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "eth_call", "params": [{"to": to, "data": "0x" + data}, "latest"]})
-    req = urllib.request.Request(RPC, body.encode(), {"content-type": "application/json", "user-agent": "ferrotype"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        reply = json.load(r)
+    for i, rpc in enumerate(RPCS):
+        req = urllib.request.Request(rpc, body.encode(), {"content-type": "application/json", "user-agent": "ferrotype"})
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                reply = json.load(r)
+            break
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+            if i == len(RPCS) - 1:
+                raise
     if "result" in reply:
         return "ok", reply["result"]
     data = reply["error"].get("data") or ""
@@ -88,7 +95,7 @@ def check(label, got, want):
 dep = json.loads((ROOT / "deployments" / "sepolia.json").read_text())
 snaps = json.loads((ROOT / "deployments" / "sepolia-snapshots.json").read_text())
 reader = dep["contracts"]["StateReader"]
-print(f"Sepolia, via {RPC}\n\nStateReader {reader} on saved mainnet proofs")
+print(f"Sepolia, via {' or '.join(RPCS)}\n\nStateReader {reader} on saved mainnet proofs")
 for name in ("usdc", "weth", "absent-account", "eoa-empty-storage"):
     f = json.loads((ROOT / "fixtures" / "mainnet" / f"{name}.json").read_text())
     p, root = f["proof"], f["block"]["stateRoot"]
