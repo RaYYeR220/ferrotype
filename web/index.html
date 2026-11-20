@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="darkreader-lock">
+<meta name="theme-color" content="#10201a">
+<title>Ferrotype</title>
+<meta name="description" content="Ferrotype proves a storage slot from the block header down, with one Fe codebase that runs in a contract, a native CLI and this page.">
+<meta property="og:title" content="Ferrotype">
+<meta property="og:description" content="Read any contract’s storage at a past block, proven from the block header down. One Fe verifier on EVM, native and WebAssembly.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Crect width='20' height='20' rx='4' fill='%2310201a'/%3E%3Cg fill='%236f887b'%3E%3Ccircle cx='4' cy='4' r='1.3'/%3E%3Ccircle cx='8' cy='4' r='1.3'/%3E%3Ccircle cx='12' cy='4' r='1.3'/%3E%3Ccircle cx='16' cy='4' r='1.3'/%3E%3Ccircle cx='4' cy='8' r='1.3'/%3E%3Ccircle cx='8' cy='8' r='1.3'/%3E%3Ccircle cx='16' cy='8' r='1.3'/%3E%3Ccircle cx='4' cy='12' r='1.3'/%3E%3Ccircle cx='8' cy='12' r='1.3'/%3E%3Ccircle cx='12' cy='12' r='1.3'/%3E%3Ccircle cx='16' cy='12' r='1.3'/%3E%3Ccircle cx='4' cy='16' r='1.3'/%3E%3Ccircle cx='8' cy='16' r='1.3'/%3E%3Ccircle cx='12' cy='16' r='1.3'/%3E%3Ccircle cx='16' cy='16' r='1.3'/%3E%3C/g%3E%3Ccircle cx='12' cy='8' r='2.2' fill='%236ee7b7'/%3E%3C/svg%3E">
+<link rel="preload" href="/fonts/gambetta-500.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/switzer-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/src/site.css">
+<link rel="stylesheet" href="/src/landing.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="grain" aria-hidden="true"></div>
+<header class="wrap nav">
+  <a class="brand" href="/" aria-label="Ferrotype home">
+    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><g fill="#6f887b"><circle cx="4" cy="4" r="1.3"/><circle cx="8" cy="4" r="1.3"/><circle cx="12" cy="4" r="1.3"/><circle cx="16" cy="4" r="1.3"/><circle cx="4" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="16" cy="8" r="1.3"/><circle cx="4" cy="12" r="1.3"/><circle cx="8" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="16" cy="12" r="1.3"/><circle cx="4" cy="16" r="1.3"/><circle cx="8" cy="16" r="1.3"/><circle cx="12" cy="16" r="1.3"/><circle cx="16" cy="16" r="1.3"/></g><circle cx="12" cy="8" r="2.2" fill="#6ee7b7"/></svg>
+    Ferrotype
+  </a>
+  <nav class="links" aria-label="Primary"><a href="#how">How it works</a><a href="#runtimes">Runtimes</a><a href="#gas">Gas</a><a href="#plebiscite">Plebiscite</a><a href="https://github.com/RaYYeR220/ferrotype">Code</a></nav>
+  <a class="nav-cta" href="/try/"><i aria-hidden="true"></i>Try it</a>
+</header>
+
+<main id="main">
+<section class="hero">
+  <div class="wrap">
+    <h1 class="in" style="--d:.05s">Read any contract’s storage at a past block.</h1>
+    <p class="sub in" style="--d:.14s">Ferrotype proves a storage slot from the block header down, with one Fe codebase that runs in a contract, a native CLI and this page.</p>
+    <div class="ctas in" style="--d:.22s">
+      <a class="btn btn-primary" href="/try/">Try it on mainnet <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1 7h11M8 3l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></a>
+      <a class="btn btn-ghost" href="https://github.com/RaYYeR220/ferrotype">Read the code</a>
+    </div>
+    <p class="proof in" style="--d:.28s"><i></i><span><a href="#plebiscite">Contracts live on Sepolia</a> · same verifier on EVM, native and WebAssembly · <span data-n="vectors">335</span> vectors · <span data-n="fuzz_rounds">1,000,000</span> damaged proofs, <span data-n="fuzz_wrong">0</span> wrong answers</span></p>
+
+    <div class="in" style="--d:.34s">
+      <div class="reads" role="tablist" aria-label="Pick a real mainnet read">
+        <button role="tab" aria-selected="true" aria-controls="band" data-case="0">USDC balance</button>
+        <button role="tab" aria-selected="false" aria-controls="band" data-case="1">WETH, zero</button>
+        <button role="tab" aria-selected="false" aria-controls="band" data-case="2">No account</button>
+      </div>
+      <div class="band" id="band" role="tabpanel">
+        <svg id="u" role="group" aria-label="A real mainnet read drawn as two tries joined by one account. Top row, left to right: the block header, then one block of 16 discs per state trie node, with the key's path through the taken slot of each, ending at the account record. Its storage root drops down to start the bottom row, the storage trie, which runs right to left and ends at the value. Every node is hashed in this tab and checked by ferrotype.wasm. Activate a node to flip one of its bytes."></svg>
+        <div class="tip" id="tip" aria-hidden="true"></div>
+      </div>
+      <div class="readout" id="readout" aria-live="polite"><div id="ro1">Loading the Fe verifier…</div><div id="ro2">&nbsp;</div></div>
+      <div class="control">
+        <div class="steps" role="group" aria-label="Replay a step">
+          <button type="button" data-step="fetch"><span class="n">1</span>Fetch<span class="bar"><i></i></span></button>
+          <button type="button" data-step="check"><span class="n">2</span>Check<span class="bar"><i></i></span></button>
+          <button type="button" data-step="read"><span class="n">3</span>Read<span class="bar"><i></i></span></button>
+        </div>
+        <button type="button" class="flip" id="flip"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" stroke-dasharray="30 4.6"/><path d="M11.6 4.3l-1.6 1.3 1.2.9" fill="none" stroke="currentColor"/></svg>Flip a byte</button>
+        <button type="button" class="flip" id="restore" hidden>Restore</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="how">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <h2>Fetch. Check. Read.</h2>
+      <p class="lede">Ferrotype starts from a block hash you already trust. Everything under it is recomputed from bytes any node can hand you.</p>
+    </div>
+    <div class="verbs reveal">
+      <div class="verb">
+        <svg viewBox="0 0 176 58" aria-hidden="true">
+          <rect x="1" y="24.5" width="9" height="9" fill="#6ee7b7"/>
+          <path d="M10 29H34" stroke="rgba(231,239,233,.16)"/>
+          <g id="g-fetch"></g>
+        </svg>
+        <span class="n">01</span><h3>Fetch</h3>
+        <p>The block header from <code>eth_getBlockByNumber</code> and the account and storage proofs from <code>eth_getProof</code>, from any node. The bytes are checked, never believed.</p>
+      </div>
+      <div class="verb">
+        <svg viewBox="0 0 176 58" aria-hidden="true"><g id="g-check"></g></svg>
+        <span class="n">02</span><h3>Check</h3>
+        <p>The header must hash to the block hash. Every node must hash to the 32-byte reference its parent holds, from the state root down, and the account leads to its storage root.</p>
+      </div>
+      <div class="verb">
+        <svg viewBox="0 0 176 58" aria-hidden="true"><g id="g-read"></g></svg>
+        <span class="n">03</span><h3>Read</h3>
+        <p>The slot’s value, or a proof that it is empty: a branch with nothing in the slot the key asks for, or a leaf that holds another key.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sec alt" id="runtimes">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <h2>One verifier, three runtimes.</h2>
+      <p class="lede">The same Fe library builds into a contract, a native command-line tool and the WebAssembly module that checked the read above.</p>
+    </div>
+    <div class="rt reveal">
+      <div class="rt-c">
+        <div class="rt-k"><span>contract · EVM</span></div>
+        <h3>In a contract</h3>
+        <div class="rt-cmd">fe build</div>
+        <div class="rt-cmd" style="color:var(--ink-3)">StateReader, live on <a data-addr="StateReader" href="https://sepolia.etherscan.io/address/0xc0a2c66ca8931dbe493fbd8e76526f3cd4f83497">Sepolia</a></div>
+        <div class="rt-n"><b data-n="evm_tests">371</b><span>tests</span></div>
+      </div>
+      <div class="rt-c">
+        <div class="rt-k"><span>CLI · native</span></div>
+        <h3>On your machine</h3>
+        <div class="rt-cmd">fe build --backend native</div>
+        <div class="rt-cmd" style="color:var(--ink-3)">talks to any node</div>
+        <div class="rt-n"><b data-n="native_tests">354</b><span>tests</span></div>
+      </div>
+      <div class="rt-c here">
+        <div class="rt-k"><span>browser · WebAssembly</span><span class="here-tag">this page</span></div>
+        <h3>In this tab</h3>
+        <div class="rt-cmd">ferrotype.wasm</div>
+        <div class="rt-n"><b data-n="wasm_checks">363</b><span>checks</span><span class="x"><span data-n="wasm_bytes">100,774</span> bytes</span></div>
+      </div>
+    </div>
+    <div class="code reveal">
+<pre><code><span class="k-at">#[cfg(target = <span class="k-s">"evm"</span>)]</span>
+<span class="k-kw">pub fn</span> keccak(_ data: <span class="k-ty">MemSpan</span>) -&gt; <span class="k-ty">u256</span> {
+    std::evm::keccak256(data)
+}
+
+<span class="k-at">#[cfg(target = <span class="k-s">"native"</span>)]</span>
+<span class="k-kw">pub fn</span> keccak(_ data: <span class="k-ty">MemSpan</span>) -&gt; <span class="k-ty">u256</span> {
+    core::hash::keccak256_word(data)
+}</code></pre>
+      <div class="cap"><span>The only target-specific code in the library.</span><span class="mono" data-n="compiler">Fe 26.6.0 (5b3f96a)</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="gas">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <h2><span data-n="vs_lido">48%</span> less gas than the audited verifier.</h2>
+      <p class="lede">Execution gas per read, measured on the same mainnet proofs for every verifier.</p>
+    </div>
+    <div class="gas-grid">
+      <div class="reveal">
+        <table class="gas">
+          <thead><tr><th scope="col"><span class="sr">Verifier</span></th><th scope="col">Read a slot</th><th scope="col">Prove a slot is empty</th></tr></thead>
+          <tbody>
+            <tr><th scope="row" class="us">Ferrotype</th><td class="us"><b data-n="fe_gas">178,284</b><i data-bar="fe_gas" style="--w:29.85%"></i></td><td class="us"><b data-n="fe_absent">166,212</b><i data-bar="fe_absent" style="--w:27.83%"></i></td></tr>
+            <tr><th scope="row">Lido<span>audited</span></th><td><span data-n="lido_gas">344,979</span><i data-bar="lido_gas" style="--w:57.76%"></i></td><td><span data-n="lido_absent">314,531</span><i data-bar="lido_absent" style="--w:52.66%"></i></td></tr>
+            <tr><th scope="row">Optimism<span>Bedrock, audited</span></th><td><span data-n="op_gas">514,491</span><i data-bar="op_gas" style="--w:86.14%"></i></td><td class="na" data-n="op_absent">cannot</td></tr>
+            <tr><th scope="row">Curve <code>curve-xdao</code><span>patched, 2025</span></th><td><span data-n="curve_gas">597,272</span><i data-bar="curve_gas" style="--w:100%"></i></td><td><span data-n="curve_absent">546,255</span><i data-bar="curve_absent" style="--w:91.46%"></i></td></tr>
+          </tbody>
+        </table>
+        <div class="gas-notes">
+          <div><b data-n="vs_lido">48%</b> less than Lido and <b data-n="vs_op">65%</b> less than Optimism per read. A full read transaction with packed proofs costs <b data-n="fe_tx">314,935</b> against Lido’s <b data-n="lido_tx">485,611</b>.</div>
+          <div>Among verifiers that reject a proof that stops early, Ferrotype costs <b data-n="vs_curve">70%</b> less than Curve’s patched one and <b data-n="vs_op">65%</b> less than Optimism’s.</div>
+          <div>Optimism’s verifier cannot prove an empty slot or a missing account at all.</div>
+          <div style="color:var(--ink-3);font-size:13.5px">Checked arithmetic stays: unchecked would save only <span data-n="unchecked">1.0%</span>. The observer hook costs <span data-n="observer">0.14%</span> (<span data-n="observer_ungated">1.5%</span> without the const gate).</div>
+        </div>
+      </div>
+      <div class="sound reveal">
+        <div class="k">Soundness</div>
+        <h3>An early stop is not a zero.</h3>
+        <p>Lido’s verifier accepts a proof whose node list stops early after a branch node and reads the slot as zero. Roman Agureev (Curve) found this class of bug in March 2025 and ChainSecurity coordinated its disclosure; Curve’s patched copy rejects it, and so does Ferrotype.</p>
+        <a class="lnk" href="https://www.chainsecurity.com/blog/when-empty-means-valid-exploiting-mpt-proof-verification-for-an-alternative-truth">ChainSecurity’s write-up <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 9l6-6M4.5 3H9v4.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sec alt" id="plebiscite">
+  <div class="wrap">
+    <div class="pleb">
+      <div class="reveal">
+        <h2>Governance by any <span style="white-space:nowrap">ERC-20,</span> counted at a past block.</h2>
+        <p class="lede">Plebiscite is a treasury whose vote weight is the voter’s balance at the proposal’s block, read from the token’s own storage. USDC has no checkpoints and needs none.</p>
+      </div>
+      <div class="reveal">
+        <div class="rules-k">Rules, all tested</div>
+        <ul class="rules">
+          <li><span>Tokens moved after the snapshot don’t count twice.</span></li>
+          <li><span>A USDC-blacklisted holder can’t vote.</span></li>
+          <li><span>A second vote is refused.</span></li>
+          <li><span>Someone else’s proof is refused.</span></li>
+          <li><span>Only <code>Execute</code> can move treasury funds.</span></li>
+        </ul>
+      </div>
+    </div>
+    <div class="code pleb-code reveal">
+<pre><code>Vote { id, support, balance_proof } -&gt; <span class="k-ty">u256</span> <span class="k-u">uses</span> (ctx, layout_kind, balance_slot, mut ledger, mut log)
+Execute { id, data } -&gt; <span class="k-ty">bool</span> <span class="k-u">uses</span> (ctx, mut call, quorum_bps, mut ledger, mut log)</code></pre>
+      <div class="cap"><span>Each message names the effects it may use. <code>Vote</code> has no <code>call</code>, so only <code>Execute</code> can move funds.</span></div>
+    </div>
+    <div class="deployed reveal">
+      <div class="deployed-k"><b>Live on Sepolia</b><span>Built with Fe <span data-n="fe_version">26.6.0</span> and deployed as is. Their views answer anyone, no wallet needed.</span></div>
+      <!-- contracts:begin -->
+      <ul>
+        <li><span>StateReader</span><a href="https://sepolia.etherscan.io/address/0xc0a2c66ca8931dbe493fbd8e76526f3cd4f83497">0xc0a2…3497</a></li>
+        <li><span>Plebiscite · DemoToken</span><a href="https://sepolia.etherscan.io/address/0xa19e7b96ecdd159c99e18f9dc0c336a35743c5ba">0xa19e…c5ba</a></li>
+        <li><span>DemoToken</span><a href="https://sepolia.etherscan.io/address/0x5cf120f737f3737dbab70cccb4cd18a56f3ad9ec">0x5cf1…d9ec</a></li>
+        <li><span>Plebiscite · USDC</span><a href="https://sepolia.etherscan.io/address/0xb8c210afe1a331b9f7cac2b83bbb284969437f9a">0xb8c2…7f9a</a></li>
+      </ul>
+      <!-- contracts:end -->
+      <a class="lnk ask" href="/try/#plebiscite">Ask it for a holder’s voting power <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1 7h11M8 3l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></a>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="checked">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <h2>Checked, not trusted.</h2>
+      <p class="lede">A verifier is judged by what it refuses. This is what Ferrotype was put through.</p>
+    </div>
+    <div class="ev reveal">
+      <div><b data-n="fuzz_rounds">1,000,000</b><p>damaged mainnet proofs, <em data-n="fuzz_wrong">0</em> wrong values<span class="m"><span data-n="fuzz_rejected">999,321</span> rejected · <span data-n="fuzz_true">679</span> still prove the true value</span></p></div>
+      <div><b data-n="vectors">335</b><p>vectors generated from the reference implementation</p></div>
+      <div><b><span data-n="same_rounds">300</span><small>/</small><span data-n="same_rounds">300</span></b><p>fuzz rounds where the EVM and native builds reach the same verdict</p></div>
+      <div><b>Amsterdam</b><p>Sepolia’s headers with their two new fields, handled</p></div>
+      <div><b data-n="unsafe">0</b><p>uses of <code>unsafe</code> in the library</p></div>
+    </div>
+    <div class="tests reveal"><span>Tests</span><span>EVM<b data-n="evm_tests">371</b></span><span>native<b data-n="native_tests">354</b></span><span>WebAssembly<b data-n="wasm_checks">363</b></span></div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Built in Fe <span data-n="fe_version">26.6.0</span> · MIT</span>
+    <nav aria-label="Footer"><a href="https://github.com/RaYYeR220/ferrotype">Code</a><a href="https://github.com/RaYYeR220/ferrotype/blob/main/JUDGES.md">Review guide</a><a href="https://github.com/RaYYeR220/ferrotype/blob/main/CLAIMS.md">Claims</a><a href="https://github.com/argotorg/fe/issues/2047">The Fe issue we found</a></nav>
+    <span class="stamp" id="stamp">&nbsp;</span>
+  </div>
+</footer>
+
+<script type="module" src="/src/landing.js"></script>
+</body>
+</html>

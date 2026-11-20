@@ -5,9 +5,16 @@
 
 import { encodeHeader } from "./header.js";
 
+// Free public endpoints, all of which send `access-control-allow-origin: *`.
+// They answer eth_getProof only for recent blocks (publicnode on Sepolia only
+// at the head, Tenderly for roughly the last 60 to 100); an archive node
+// answers for any block.
 export const NETWORKS = Object.freeze({
-  mainnet: { name: "Ethereum", chainId: 1, rpc: "https://ethereum-rpc.publicnode.com" },
-  sepolia: { name: "Sepolia", chainId: 11155111, rpc: "https://ethereum-sepolia-rpc.publicnode.com" },
+  mainnet: { name: "Ethereum", chainId: 1, rpc: "https://ethereum-rpc.publicnode.com", explorer: "https://etherscan.io" },
+  sepolia: {
+    name: "Sepolia", chainId: 11155111, rpc: "https://sepolia.gateway.tenderly.co",
+    fallback: "https://ethereum-sepolia-rpc.publicnode.com", explorer: "https://sepolia.etherscan.io",
+  },
 });
 
 let nextId = 1;
@@ -24,6 +31,7 @@ export async function rpc(url, method, params) {
   if (body.error) {
     const error = new Error(`${method}: ${body.error.message ?? JSON.stringify(body.error)}`);
     error.data = body.error.data;
+    error.code = body.error.code; // the node answered: this is not a transport failure
     throw error;
   }
   return body.result;
@@ -35,13 +43,16 @@ const strip = (h) => (h.startsWith("0x") ? h.slice(2) : h);
 
 /**
  * Everything one read needs at one block: the header (RLP, for the Fe
- * verifier to hash) and eth_getProof for `account` and `slot`.
+ * verifier to hash) and eth_getProof for `account` and `slot`. `proof` is the
+ * node's whole answer, kept so the read can be saved in the `{ block, proof }`
+ * file `ferrotype verify` takes.
  */
 export async function fetchRead(url, { account, slot, block = "latest" }) {
   const tag = block === "latest" ? "latest" : quantity(block);
   const header = await rpc(url, "eth_getBlockByNumber", [tag, false]);
   if (!header) throw new Error(`the node does not know block ${block}`);
   const proof = await rpc(url, "eth_getProof", [account, [word(slot)], header.number]);
+  if (!proof || !Array.isArray(proof.accountProof) || !proof.storageProof?.[0]) throw new Error("eth_getProof: the answer has no proof in it");
   return {
     block: header,
     headerRlp: encodeHeader(header),
@@ -50,6 +61,7 @@ export async function fetchRead(url, { account, slot, block = "latest" }) {
     claimed: proof.storageProof[0].value,
     accountProof: proof.accountProof,
     storageProof: proof.storageProof[0].proof,
+    proof,
   };
 }
 
@@ -123,6 +135,11 @@ export function snapshotCall(id) {
   return "0x8f1dd809" + strip(word(id));
 }
 
+/** Plebiscite.tally(uint256 id) → (votesFor, votesAgainst, supply, deadline, snapshotBlock, executed) */
+export function tallyCall(id) {
+  return "0xed8b6b31" + strip(word(id));
+}
+
 /** Plebiscite.config() → (token, layoutKind, balanceSlot, supplySlot, votingPeriod, quorumBps, maxSnapshotAge) */
 export const CONFIG_CALL = "0x79502c55";
 
@@ -146,17 +163,29 @@ export function decodeRevert(data) {
 
 /**
  * eth_call; resolves to `{ ok: true, words }` or `{ ok: false, revert }`
- * with the decoded revert reason when the contract refuses.
+ * with the decoded revert reason when the contract refuses. `transport` is
+ * set when no node answered at all (network, CORS, HTTP status).
  */
 export async function view(url, to, data) {
+  const t0 = performance.now();
   try {
     const result = await rpc(url, "eth_call", [{ to, data }, "latest"]);
     const body = strip(result);
     const words = [];
     for (let i = 0; i < body.length; i += 64) words.push("0x" + body.slice(i, i + 64));
-    return { ok: true, words };
+    return { ok: true, words, url, ms: performance.now() - t0 };
   } catch (e) {
     const data = typeof e.data === "string" ? e.data : e.data?.data;
-    return { ok: false, revert: decodeRevert(data), message: String(e.message) };
+    return { ok: false, revert: decodeRevert(data), message: String(e.message), transport: e.code === undefined, url, ms: performance.now() - t0 };
   }
+}
+
+/** `view` on the first of `urls` that answers; a revert is an answer. */
+export async function viewAny(urls, to, data) {
+  let last;
+  for (const url of urls) {
+    last = await view(url, to, data);
+    if (!last.transport) return last;
+  }
+  return last;
 }

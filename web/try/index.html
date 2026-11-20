@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="darkreader-lock">
+<meta name="theme-color" content="#10201a">
+<title>Try Ferrotype</title>
+<meta name="description" content="Check one storage read three ways: Ferrotype's Fe verifier as WebAssembly in this tab, as a contract on Sepolia, and the native CLI's recorded runs on the same files.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Crect width='20' height='20' rx='4' fill='%2310201a'/%3E%3Cg fill='%236f887b'%3E%3Ccircle cx='4' cy='4' r='1.3'/%3E%3Ccircle cx='8' cy='4' r='1.3'/%3E%3Ccircle cx='12' cy='4' r='1.3'/%3E%3Ccircle cx='16' cy='4' r='1.3'/%3E%3Ccircle cx='4' cy='8' r='1.3'/%3E%3Ccircle cx='8' cy='8' r='1.3'/%3E%3Ccircle cx='16' cy='8' r='1.3'/%3E%3Ccircle cx='4' cy='12' r='1.3'/%3E%3Ccircle cx='8' cy='12' r='1.3'/%3E%3Ccircle cx='12' cy='12' r='1.3'/%3E%3Ccircle cx='16' cy='12' r='1.3'/%3E%3Ccircle cx='4' cy='16' r='1.3'/%3E%3Ccircle cx='8' cy='16' r='1.3'/%3E%3Ccircle cx='12' cy='16' r='1.3'/%3E%3Ccircle cx='16' cy='16' r='1.3'/%3E%3C/g%3E%3Ccircle cx='12' cy='8' r='2.2' fill='%236ee7b7'/%3E%3C/svg%3E">
+<link rel="preload" href="/fonts/gambetta-500.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/switzer-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/src/site.css">
+<link rel="stylesheet" href="/src/app.css">
+</head>
+<body>
+<a class="skip" href="#read">Skip to the read</a>
+<div class="grain" aria-hidden="true"></div>
+<header class="wrap nav">
+  <a class="brand" href="/" aria-label="Ferrotype home">
+    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><g fill="#6f887b"><circle cx="4" cy="4" r="1.3"/><circle cx="8" cy="4" r="1.3"/><circle cx="12" cy="4" r="1.3"/><circle cx="16" cy="4" r="1.3"/><circle cx="4" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="16" cy="8" r="1.3"/><circle cx="4" cy="12" r="1.3"/><circle cx="8" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="16" cy="12" r="1.3"/><circle cx="4" cy="16" r="1.3"/><circle cx="8" cy="16" r="1.3"/><circle cx="12" cy="16" r="1.3"/><circle cx="16" cy="16" r="1.3"/></g><circle cx="12" cy="8" r="2.2" fill="#6ee7b7"/></svg>
+    Ferrotype
+  </a>
+  <nav class="links" aria-label="Primary"><a href="#read" aria-current="page">Read a slot</a><a href="#plebiscite">Plebiscite</a><a href="/#how">How it works</a><a href="/#gas">Gas</a><a href="https://github.com/RaYYeR220/ferrotype">Code</a></nav>
+  <a class="nav-cta" href="https://github.com/RaYYeR220/ferrotype"><i aria-hidden="true"></i>Read the code</a>
+</header>
+
+<main id="main">
+<section class="app-head">
+  <div class="wrap">
+    <h1 class="in" style="--d:.05s">One read, checked three ways.</h1>
+    <p class="sub in" style="--d:.12s">The same Fe verifier checks it in this tab as WebAssembly and on Sepolia as a contract. Beside them, the native CLI’s runs on the same files, with each file to run it yourself. No wallet, no install.</p>
+  </div>
+</section>
+
+<section class="app" id="read" aria-label="Read a slot">
+  <div class="wrap">
+    <div class="picker in" style="--d:.18s">
+      <div class="seg" role="tablist" aria-label="What to read">
+        <button type="button" role="tab" id="tab-saved" aria-selected="true" aria-controls="panel-saved">Saved mainnet reads</button>
+        <button type="button" role="tab" id="tab-live" aria-selected="false" aria-controls="panel-live" tabindex="-1">Live read</button>
+      </div>
+
+      <div id="panel-saved" role="tabpanel" aria-labelledby="tab-saved">
+        <div class="presets" role="radiogroup" aria-label="Saved mainnet reads">
+          <button type="button" role="radio" aria-checked="true" data-fixture="usdc"><b>USDC balance</b><span>of 0x28c6…1d60 · flagged</span></button>
+          <button type="button" role="radio" aria-checked="false" data-fixture="weth"><b>WETH, empty slot</b><span>proven zero</span></button>
+          <button type="button" role="radio" aria-checked="false" data-fixture="absent-account"><b>No account</b><span>0x8f80…cea0 · proven absent</span></button>
+          <button type="button" role="radio" aria-checked="false" data-fixture="eoa-empty-storage"><b>EOA, no storage</b><span>0x0000…beef · empty trie</span></button>
+        </div>
+        <p class="hint">Saved from Ethereum mainnet with <code>eth_getProof</code>. The native CLI was run on each file and on its damaged copies: <span data-n="runs">20</span> runs, recorded with <span data-n="compiler">Fe 26.6.0 (5b3f96a)</span>.</p>
+      </div>
+
+      <form id="panel-live" role="tabpanel" aria-labelledby="tab-live" hidden novalidate>
+        <div class="form">
+          <label class="f f-net"><span>Network</span>
+            <select id="net" name="net">
+              <option value="mainnet">Ethereum · publicnode</option>
+              <option value="sepolia">Sepolia · Tenderly</option>
+              <option value="custom">Custom RPC URL</option>
+            </select>
+          </label>
+          <label class="f f-rpc" id="f-rpc" hidden><span>RPC URL</span><input id="rpc" name="rpc" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://your-archive-node.example"></label>
+          <label class="f f-addr"><span>Contract</span><input id="contract" name="contract" autocomplete="off" spellcheck="false" value="0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" aria-describedby="contract-note"><small id="contract-note">USDC</small></label>
+          <fieldset class="f f-what"><legend>Read</legend>
+            <div class="seg seg-sm" role="radiogroup" aria-label="Read">
+              <label><input type="radio" name="what" value="balance" checked><span>ERC-20 balance of</span></label>
+              <label><input type="radio" name="what" value="slot"><span>Raw slot</span></label>
+            </div>
+          </fieldset>
+          <div class="f-row" id="row-balance">
+            <label class="f f-addr"><span>Holder</span><input id="holder" name="holder" autocomplete="off" spellcheck="false" value="0x28C6c06298d514Db089934071355E5743bf21d60"></label>
+            <label class="f f-sm"><span>Layout</span>
+              <select id="layout" name="layout"><option value="0">solidity</option><option value="1">vyper</option><option value="2" selected>flagged</option></select>
+            </label>
+            <label class="f f-xs"><span>Slot index</span><input id="base" name="base" inputmode="numeric" autocomplete="off" value="9"></label>
+          </div>
+          <div class="f-row" id="row-slot" hidden>
+            <label class="f f-addr"><span>Slot</span><input id="slot" name="slot" autocomplete="off" spellcheck="false" placeholder="0x0 or a 32-byte key" value="0x0"></label>
+          </div>
+          <fieldset class="f f-block"><legend>Block</legend>
+            <div class="block-in">
+              <div class="seg seg-sm" role="radiogroup" aria-label="Block">
+                <label><input type="radio" name="blk" value="latest" checked><span>latest</span></label>
+                <label><input type="radio" name="blk" value="number"><span>number</span></label>
+              </div>
+              <input id="blockno" name="blockno" inputmode="numeric" autocomplete="off" placeholder="e.g. 24000000" aria-label="Block number" disabled>
+            </div>
+            <small>Free public nodes answer <code>eth_getProof</code> only for about the last 100 blocks. For an older block, choose Custom RPC and paste an archive node’s URL.</small>
+          </fieldset>
+        </div>
+        <div class="go">
+          <button type="submit" class="btn btn-primary" id="go">Fetch and check <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1 7h11M8 3l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
+          <p class="status" id="live-status" role="status" aria-live="polite"></p>
+        </div>
+      </form>
+    </div>
+
+    <div class="stage">
+      <div class="band" id="band">
+        <svg id="u" role="group" aria-label="The read drawn as two tries joined by one account: top row, the block header and the state trie nodes, ending at the account; its storage root drops to the bottom row, the storage trie, ending at the value. Every verdict comes from ferrotype.wasm. Activate a node to flip one of its bytes."></svg>
+        <div class="tip" id="tip" aria-hidden="true"></div>
+      </div>
+      <div class="readout" id="readout" aria-live="polite"><div id="ro1">Loading the Fe verifier…</div><div id="ro2">&nbsp;</div></div>
+      <div class="control">
+        <div class="steps" role="group" aria-label="Replay a step">
+          <button type="button" data-step="fetch"><span class="n">1</span>Fetch<span class="bar"><i></i></span></button>
+          <button type="button" data-step="check"><span class="n">2</span>Check<span class="bar"><i></i></span></button>
+          <button type="button" data-step="read"><span class="n">3</span>Read<span class="bar"><i></i></span></button>
+        </div>
+        <button type="button" class="flip" id="flip"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" stroke-dasharray="30 4.6"/><path d="M11.6 4.3l-1.6 1.3 1.2.9" fill="none" stroke="currentColor"/></svg>Flip a byte</button>
+        <button type="button" class="flip" id="restore" hidden>Restore</button>
+      </div>
+      <div class="damage" id="damage">
+        <span class="damage-k" id="damage-k">Damage the saved file</span>
+        <div class="damage-b" id="damage-b" role="group" aria-labelledby="damage-k"></div>
+        <span class="damage-n" id="damage-n">or click any node above to flip one of its bytes</span>
+      </div>
+    </div>
+
+    <div class="verdict" id="verdict">
+      <div class="seal" id="seal" role="status" aria-live="polite"><span class="seal-mark" aria-hidden="true"></span><b id="seal-t">Waiting for the verifiers</b><span id="seal-v"></span></div>
+      <div class="lanes">
+        <article class="lane" id="lane-wasm" aria-labelledby="lane-wasm-h">
+          <div class="lane-k"><span>Browser · WebAssembly</span><span class="tag live">Live</span></div>
+          <h3 id="lane-wasm-h">In this tab</h3>
+          <div class="lane-body">ferrotype.wasm rebuilds the header, hashes it, and proves the account and the slot under it.</div>
+        </article>
+        <article class="lane" id="lane-evm" aria-labelledby="lane-evm-h">
+          <div class="lane-k"><span>Contract · EVM</span><span class="tag live">Live</span></div>
+          <h3 id="lane-evm-h">On Sepolia</h3>
+          <div class="lane-body"><code>eth_call</code> to <a class="ext" data-addr="StateReader" href="https://sepolia.etherscan.io/address/0xc0a2c66ca8931dbe493fbd8e76526f3cd4f83497">StateReader</a>, deployed on Sepolia. It takes the state root as an argument, so it checks mainnet proofs too.</div>
+        </article>
+        <article class="lane" id="lane-cli" aria-labelledby="lane-cli-h">
+          <div class="lane-k"><span>CLI · native</span><span class="tag rec">Recorded</span></div>
+          <h3 id="lane-cli-h">From the command line</h3>
+          <div class="lane-body"><code>ferrotype verify</code> on the same saved file, run once and recorded with its output, exit code and the file’s sha256.</div>
+        </article>
+      </div>
+      <p class="why" id="why" hidden></p>
+    </div>
+  </div>
+</section>
+
+<section class="sec alt" id="plebiscite">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <h2>Plebiscite on Sepolia.</h2>
+      <p class="lede">Two treasuries, each governed by a token’s holders and counting balances at the block its proposal opened. Every figure in these cards is a view call made now.</p>
+    </div>
+
+    <div class="daos reveal">
+      <article class="dao" data-dao="demo" aria-labelledby="dao-demo-h">
+        <div class="dao-k"><span>Plebiscite · DemoToken</span><a class="ext" data-addr="PlebisciteDemo" href="https://sepolia.etherscan.io/address/0xa19e7b96ecdd159c99e18f9dc0c336a35743c5ba">0xa19e…c5ba</a></div>
+        <h3 id="dao-demo-h">Demo DAO</h3>
+        <p class="dao-p"><span data-n="demo_voters">3</span> voters, one proposal, counted at block <span data-n="demo_block">12,173,862</span>.</p>
+        <dl class="kv" id="dao-demo"></dl>
+        <p class="dao-s" id="dao-demo-s" role="status">Asking the contract…</p>
+      </article>
+      <article class="dao" data-dao="usdc" aria-labelledby="dao-usdc-h">
+        <div class="dao-k"><span>Plebiscite · USDC</span><a class="ext" data-addr="PlebisciteUSDC" href="https://sepolia.etherscan.io/address/0xb8c210afe1a331b9f7cac2b83bbb284969437f9a">0xb8c2…7f9a</a></div>
+        <h3 id="dao-usdc-h">USDC DAO</h3>
+        <p class="dao-p">Sepolia USDC, flag bit and all, counted at block <span data-n="usdc_block">12,173,868</span>.</p>
+        <dl class="kv" id="dao-usdc"></dl>
+        <p class="dao-s" id="dao-usdc-s" role="status">Asking the contract…</p>
+      </article>
+    </div>
+
+    <div class="pleb-grid">
+      <div class="power reveal" id="power">
+        <div class="power-head">
+          <h3>Voting power, live</h3>
+          <div class="seg seg-sm" role="tablist" aria-label="Which DAO">
+            <button type="button" role="tab" aria-selected="true" data-dao="demo">Demo DAO</button>
+            <button type="button" role="tab" aria-selected="false" data-dao="usdc" tabindex="-1">USDC DAO</button>
+          </div>
+        </div>
+        <p class="power-note" id="power-note">Proof fetched at the snapshot block when the proposal opened (block <span data-n="demo_block">12,173,862</span>); the contract call is live.</p>
+        <div class="holders" id="holders" role="radiogroup" aria-label="Holder"></div>
+        <div class="power-b">
+          <button type="button" class="btn btn-primary btn-sm" id="ask">Ask the contract</button>
+          <button type="button" class="flip" id="borrow">Use Alice’s proof for Bob</button>
+          <button type="button" class="flip" id="pflip">Flip a byte of the proof</button>
+        </div>
+        <div class="answer" id="answer" role="status" aria-live="polite"></div>
+      </div>
+
+      <div class="recorded reveal">
+        <div class="rules-k">Recorded on Sepolia: the Demo DAO’s proposal</div>
+        <!-- txs:begin -->
+      <ol class="txs">
+        <li><a href="https://sepolia.etherscan.io/tx/0xb7339bf6dd65d262f82cddc5f61a7b8562df8e5cf3bda31db98222515ed55c4b"><span class="tx-h">0xb7339bf6…</span></a><span>Proposal 1 opens, counted at block 12,173,862: the snapshot.</span></li>
+        <li><a href="https://sepolia.etherscan.io/tx/0x2d7a26e6eb43709e5cada3d36ab6470cf4ff8275f365fb7128afc81c5fa662df"><span class="tx-h">0x2d7a26e6…</span></a><span>Alice sends 500 tokens to Carol after the snapshot: her vote still counts 600.</span></li>
+        <li><a href="https://sepolia.etherscan.io/tx/0xb23032a1c2092f9218c3c796156f27a9e4f49f6d5535fa83278c5944d3de93e0"><span class="tx-h">0xb23032a1…</span></a><span>Alice votes for with 600.</span></li>
+        <li><a href="https://sepolia.etherscan.io/tx/0xa2792fcf57096d7e004ae4ec950ab79a98a5328c5c61934f4792bb3c43a08539"><span class="tx-h">0xa2792fcf…</span></a><span>Bob votes against with 300.</span></li>
+        <li><a href="https://sepolia.etherscan.io/tx/0xc1b36a38828bfaff05b02e322c8ed6ed61d49b19a43cf0b6f69654623a4fee24"><span class="tx-h">0xc1b36a38…</span></a><span>Carol votes for with 100, not the 600 she holds after the transfer.</span></li>
+        <li><a href="https://sepolia.etherscan.io/tx/0x74d597cb0c766cc44bd026c7bc020994aa3411d5edb656773d29cc074f9eb162"><span class="tx-h">0x74d597cb…</span></a><span>The proposal passed and Execute pays it: the one call the treasury can make.</span></li>
+      </ol>
+      <!-- txs:end -->
+        <p class="rec-note">Built with Fe <span data-n="fe_version">26.6.0</span> and deployed as is: <a class="ext" data-addr="StateReader" href="https://sepolia.etherscan.io/address/0xc0a2c66ca8931dbe493fbd8e76526f3cd4f83497">StateReader</a> · <a class="ext" data-addr="DemoToken" href="https://sepolia.etherscan.io/address/0x5cf120f737f3737dbab70cccb4cd18a56f3ad9ec">DemoToken</a> · <a class="ext" data-addr="PlebisciteDemo" href="https://sepolia.etherscan.io/address/0xa19e7b96ecdd159c99e18f9dc0c336a35743c5ba">Plebiscite (DemoToken)</a> · <a class="ext" data-addr="PlebisciteUSDC" href="https://sepolia.etherscan.io/address/0xb8c210afe1a331b9f7cac2b83bbb284969437f9a">Plebiscite (USDC)</a></p>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Built in Fe <span data-n="fe_version">26.6.0</span> · MIT</span>
+    <nav aria-label="Footer"><a href="https://github.com/RaYYeR220/ferrotype">Code</a><a href="https://github.com/RaYYeR220/ferrotype/blob/main/JUDGES.md">Review guide</a><a href="https://github.com/RaYYeR220/ferrotype/blob/main/CLAIMS.md">Claims</a><a href="https://github.com/argotorg/fe/issues/2047">The Fe issue we found</a></nav>
+    <span class="stamp" id="stamp">ferrotype.wasm · <span data-n="wasm_bytes">100,774</span> bytes · sha256 <span data-n="wasm_sha">8a109b1bfa83</span>…</span>
+  </div>
+</footer>
+
+<script type="module" src="/src/app.js"></script>
+</body>
+</html>
