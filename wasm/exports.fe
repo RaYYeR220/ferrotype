@@ -210,9 +210,10 @@ pub fn read_header(header: HostText) -> Reply {
     }
 }
 
-/// Looks `path` up in the trie `root` with the packed proof `proof`. The
-/// record is two words: 0 and the value (as an integer) for a present key,
-/// or 100 and 0 for an absent one.
+/// Looks `path` up in the storage trie `root` with the packed proof `proof`.
+/// The record is two words: 0 and the value (a canonical integer, as
+/// `state::storage` reads it) for a present key, or 100 and 0 for an absent
+/// one.
 pub fn lookup(root: HostText, path: HostText, proof: HostText) -> Reply {
     let r = match word(root) {
         Option::Some(w) => w,
@@ -234,14 +235,9 @@ pub fn lookup(root: HostText, path: HostText, proof: HostText) -> Reply {
     }
     var nodes = Packed::new(start: 0, len: buf.len())
     match trie::lookup(buf.span(), nodes: mut nodes, root: r, path: p) {
-        Result::Ok(Lookup::Found(item)) => {
-            match rlp::item_exact(buf.span(), at: item.payload, len: item.len) {
-                Option::Some(value) => match value.as_word(buf.span()) {
-                    Option::Some(v) => record([0, v]),
-                    Option::None => Reply::error(code(ProofError::Malformed)),
-                },
-                Option::None => Reply::error(code(ProofError::Malformed)),
-            }
+        Result::Ok(Lookup::Found(item)) => match state::slot_value(buf.span(), item) {
+            Result::Ok(v) => record([0, v]),
+            Result::Err(e) => Reply::error(code(e)),
         },
         Result::Ok(Lookup::Absent) => record([100, 0]),
         Result::Err(e) => Reply::error(code(e)),

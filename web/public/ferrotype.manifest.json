@@ -2,8 +2,8 @@
   "manifest_version": 1,
   "module": {
     "file": "ferrotype.wasm",
-    "sha256": "8a109b1bfa83f44c80984e83bf931945f8b2b2e06495c9e3d5fe5b727b419b38",
-    "size": 100774,
+    "sha256": "c88663346a59756ecb2989e22fab6c5d555b87276311d40de88cfcc2c06a8ce1",
+    "size": 102909,
     "initial_memory_pages": 18
   },
   "contract_version": 1,

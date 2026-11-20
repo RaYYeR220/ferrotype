@@ -40,6 +40,16 @@ impl Item {
         }
         Option::Some(read_be(buf, at: self.payload, len: self.len))
     }
+
+    /// The payload read as a canonical RLP integer: at most 32 bytes and no
+    /// leading zero byte, so zero is the empty string and every number has
+    /// exactly one encoding.
+    pub fn as_uint(self, _ buf: MemSpan) -> Option<u256> {
+        if self.list || self.len > 32 || (self.len > 0 && buf.byte_at(self.payload) == 0) {
+            return Option::None
+        }
+        Option::Some(read_be(buf, at: self.payload, len: self.len))
+    }
 }
 
 /// Reads the item whose header starts at `at`; it must end at or before `limit`.
@@ -74,7 +84,10 @@ pub fn item_at(_ buf: MemSpan, at: usize, limit: usize) -> Option<Item> {
     if buf.byte_at(at + 1) == 0 {
         return Option::None
     }
-    let len: usize = read_be(buf, at: at + 1, len: len_len).downcast_truncate()
+    // A length that does not fit `usize` (more than four bytes of it on
+    // 32-bit WebAssembly) cannot fit the buffer either: rejecting it, rather
+    // than truncating it, gives every target the same verdict.
+    let len: usize = read_be(buf, at: at + 1, len: len_len).downcast()?
     if len < 56 {
         return Option::None
     }

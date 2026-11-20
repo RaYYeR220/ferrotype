@@ -32,7 +32,7 @@ const here = dirname(fileURLToPath(import.meta.url))
 const OUT_DIR = resolve(here, '../../fixtures/synthetic')
 const MAX_FILE_BYTES = 2 * 1024 * 1024
 
-const STATS = { inlineEntriesStripped: 0, inlineSearch: {}, wrongKeySkipped: [], ejs: {} }
+const STATS = { inlineEntriesStripped: 0, inlineSearch: {}, wrongKeySkipped: [], ejs: {}, ejsByMutation: {} }
 
 function die(msg) {
   console.error(`FATAL: ${msg}`)
@@ -256,6 +256,8 @@ async function invalidCase(name, root, key, proof, kind, extra) {
   const ejs = await ejsVerify(root, key, proof)
   const tag = `${kind}:${ejs.threw !== undefined ? 'rejected' : 'accepted'}`
   STATS.ejs[tag] = (STATS.ejs[tag] ?? 0) + 1
+  const byMutation = `${extra?.mutation ?? 'other'}:${ejs.threw !== undefined ? 'rejected' : 'accepted'}`
+  STATS.ejsByMutation[byMutation] = (STATS.ejsByMutation[byMutation] ?? 0) + 1
   return c
 }
 
@@ -771,6 +773,35 @@ async function main() {
       dec[item] = RLP.decode(b.proof[leaf.entry])
       await craft('embed-large-node', b, 'BadReference', k, RLP.encode(dec), leaf.entry, { embeddedLen: b.proof[leaf.entry].length })
     }
+    // a long-form length written in 5 or 8 bytes whose low 32 bits are the true
+    // length: a verifier that keeps lengths in a 32-bit integer reads it as valid
+    for (const [b, k, width] of [
+      [byLabel('n1-full'), 0, 5],
+      [byLabel('n1-full'), 0, 8],
+      [byLabel('n1000'), 0, 5],
+    ]) {
+      const node = b.proof[k]
+      assert(node[0] >= 0xf8, 'rlp-len-wide: the node must use the long form')
+      const payload = node.subarray(1 + node[0] - 0xf7)
+      const n = payload.length
+      const low = [(n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff]
+      const high = width === 5 ? [0x01] : [0xff, 0xff, 0xff, 0xff]
+      const enc = concat(Uint8Array.from([0xf7 + width, ...high, ...low]), payload)
+      await craft(`rlp-len-${width}-bytes`, b, 'Malformed', k, enc, undefined, { lengthBytes: width })
+    }
+    // a stored value that is not a canonical integer: a leading zero byte, or
+    // zero written as the byte 0x00 instead of the empty string
+    for (const kind of ['tiny', 'byte80', 'medium', 'full']) {
+      const b = leafBases.find((r) => r.c.valueKind === kind)
+      const [p] = leafDec(b)
+      const stored = RLP.encode(concat(Uint8Array.from([0]), minimalBytes(BigInt(b.c.expect.word))))
+      await craft('value-leading-zero', b, 'Malformed', lastIdx(b), RLP.encode([p, stored]), undefined, { valueKind: kind })
+    }
+    {
+      const b = leafBases.filter((r) => r.c.valueKind === 'medium')[1]
+      const [p] = leafDec(b)
+      await craft('value-zero-byte', b, 'Malformed', lastIdx(b), RLP.encode([p, Uint8Array.from([0])]))
+    }
   }
 
   // --------------------------------------------------------------------- write
@@ -800,6 +831,10 @@ async function main() {
   console.log('invalid by mutation:', count(invalid, (c) => c.mutation))
   console.log('invalid by error:', count(invalid, (c) => c.expect.error))
   console.log('stats:', JSON.stringify(STATS, null, 1))
+  // What the reference library's own verifyProof makes of the invalid vectors,
+  // for the README (scripts/render_readme.py).
+  const ejsOut = { vectors: total, invalid: invalid.length, verifyProof: STATS.ejs, byMutation: STATS.ejsByMutation }
+  writeFileSync(join(here, 'ejs-verdicts.json'), JSON.stringify(ejsOut, null, 2) + '\n')
   console.log(`${total} vectors, all agree with ref_verify (${((Date.now() - t0) / 1000).toFixed(1)}s)`)
 }
 

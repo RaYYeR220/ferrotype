@@ -1,0 +1,245 @@
+//! Hostile inputs found in review. Each must be refused with a reason, on the
+//! EVM and natively alike (the generated invalid vectors carry the same cases
+//! to the WebAssembly build), and never with a panic.
+
+use core::ptr::{MemBuffer, MemSpan}
+use core::text::decode_hex
+use ferrotype::hash::{keccak, keccak_words}
+use ferrotype::nodes::{AbiList, Packed}
+use ferrotype::slots::solidity_array
+use ferrotype::state::{self, Account, StateRoot, StorageRoot, EMPTY_CODE_HASH}
+use ferrotype::trie::{self, Lookup, ProofError, EMPTY_TRIE_ROOT}
+
+// --- building one-leaf tries -------------------------------------------------------
+
+// The RLP header of a payload of `len` bytes (under 256); `base` is 0x80 for
+// a string, 0xc0 for a list.
+fn push_header(_ out: mut MemBuffer, base: u8, len: usize) {
+    let short: u8 = len.downcast_truncate()
+    if len < 56 {
+        out.push(base + short)
+    } else {
+        out.push(base + 56)
+        out.push(short)
+    }
+}
+
+// A trie that holds one key, whose root node is the leaf for `path`: the
+// hex-prefixed path, then `value` (the bytes the leaf keeps) as a string.
+fn one_leaf(path: u256, value: MemSpan) -> MemBuffer {
+    var payload = MemBuffer::empty()
+    payload.push(0xa1)
+    payload.push(0x20)
+    payload.extend_from_word(path, len: 32)
+    if value.len() == 1 && value.byte_at(0) < 0x80 {
+        payload.push(value.byte_at(0))
+    } else {
+        push_header(mut payload, base: 0x80, len: value.len())
+        payload.extend_from(value)
+    }
+    var node = MemBuffer::empty()
+    push_header(mut node, base: 0xc0, len: payload.len())
+    node.extend_from(payload.span())
+    node
+}
+
+// Proves `slot` of a one-leaf storage trie whose leaf keeps `stored` (hex).
+fn slot_holding<const N: usize>(_ stored: String<N>, slot: u256) -> Result<ProofError, u256> {
+    let value = decode_hex(stored).unwrap()
+    let node = one_leaf(path: state::slot_path(slot), value: value.span())
+    var nodes = Packed::new(start: 0, len: node.len())
+    state::storage(
+        node.span(),
+        nodes: mut nodes,
+        root: StorageRoot { value: keccak(node.span()) },
+        slot,
+    )
+}
+
+// Proves the account at `address` in a one-leaf state trie whose account has
+// the nonce and balance items `nonce` and `balance` (RLP, hex).
+fn account_holding<const A: usize, const B: usize>(
+    nonce: String<A>,
+    balance: String<B>,
+    address: Address,
+) -> Result<ProofError, Account> {
+    var items = MemBuffer::empty()
+    items.extend_from(decode_hex(nonce).unwrap().span())
+    items.extend_from(decode_hex(balance).unwrap().span())
+    items.push(0xa0)
+    items.extend_from_word(EMPTY_TRIE_ROOT, len: 32)
+    items.push(0xa0)
+    items.extend_from_word(EMPTY_CODE_HASH, len: 32)
+    var account = MemBuffer::empty()
+    push_header(mut account, base: 0xc0, len: items.len())
+    account.extend_from(items.span())
+    let node = one_leaf(path: state::account_path(address), value: account.span())
+    var nodes = Packed::new(start: 0, len: node.len())
+    state::account(
+        node.span(),
+        nodes: mut nodes,
+        root: StateRoot { value: keccak(node.span()) },
+        address,
+    )
+}
+
+fn proven<T: Copy>(_ r: Result<ProofError, T>) -> T {
+    match r {
+        Result::Ok(value) => value,
+        Result::Err(_) => core::panic(),
+    }
+}
+
+fn is_malformed<T>(_ r: Result<ProofError, T>) -> bool {
+    match r {
+        Result::Err(ProofError::Malformed) => true,
+        _ => false,
+    }
+}
+
+// --- integers are canonical ------------------------------------------------------------
+
+#[test]
+fn a_canonical_storage_value_is_read() {
+    assert!(proven(slot_holding("2a", slot: 7)) == 0x2a)
+    assert!(proven(slot_holding("82012a", slot: 7)) == 0x012a)
+    // Zero is the empty string.
+    assert!(proven(slot_holding("80", slot: 7)) == 0)
+}
+
+#[test]
+fn a_storage_value_with_a_leading_zero_is_malformed() {
+    assert!(is_malformed(slot_holding("82002a", slot: 7)))
+    // Zero written as one zero byte instead of the empty string.
+    assert!(is_malformed(slot_holding("00", slot: 7)))
+}
+
+#[test]
+fn a_canonical_account_is_read() {
+    let who = Address::new(0xc0ffee)
+    let account = proven(
+        account_holding(nonce: "01", balance: "820100", address: who),
+    )
+    assert!(account.exists)
+    assert!(account.nonce == 1)
+    assert!(account.balance == 0x0100)
+    // Zero is the empty string here too.
+    let fresh = proven(account_holding(nonce: "80", balance: "80", address: who))
+    assert!(fresh.nonce == 0 && fresh.balance == 0)
+}
+
+#[test]
+fn an_account_nonce_or_balance_with_a_leading_zero_is_malformed() {
+    let who = Address::new(0xc0ffee)
+    assert!(
+        is_malformed(
+            account_holding(nonce: "820001", balance: "80", address: who),
+        ),
+    )
+    assert!(
+        is_malformed(account_holding(nonce: "00", balance: "80", address: who)),
+    )
+    assert!(
+        is_malformed(
+            account_holding(nonce: "01", balance: "8200ff", address: who),
+        ),
+    )
+    assert!(
+        is_malformed(account_holding(nonce: "01", balance: "00", address: who)),
+    )
+}
+
+// --- RLP lengths wider than usize -------------------------------------------------------
+
+// The leaf of the review's WebAssembly finding: a 64-byte payload whose long
+// form length is written in `header` (hex).
+fn wide_length_leaf<const N: usize>(_ header: String<N>) -> Result<ProofError, Lookup> {
+    var node = MemBuffer::from_span(decode_hex(header).unwrap().span())
+    node.push(0xa1)
+    node.push(0x20)
+    let path: u256 = 0x1111111111111111111111111111111111111111111111111111111111111111
+    node.extend_from_word(path, len: 32)
+    node.push(0x9d)
+    node.push(0x9c)
+    var i: usize = 0
+    while i < 28 {
+        node.push(0x42)
+        i += 1
+    }
+    var nodes = Packed::new(start: 0, len: node.len())
+    trie::lookup(
+        node.span(),
+        nodes: mut nodes,
+        root: keccak(node.span()),
+        path,
+    )
+}
+
+#[test]
+fn a_canonical_long_length_is_read() {
+    match wide_length_leaf("f840") {
+        Result::Ok(Lookup::Found(_)) => {},
+        _ => {
+            assert!(false)
+        },
+    }
+}
+
+#[test]
+fn a_length_of_five_or_eight_bytes_is_malformed() {
+    // 2^32 + 64 and 0xffffffff_00000040: a 32-bit usize would read both as 64.
+    assert!(is_malformed(wide_length_leaf("fc0100000040")))
+    assert!(is_malformed(wide_length_leaf("ffffffffff00000040")))
+}
+
+// --- ABI bytes[] heads -------------------------------------------------------------------
+
+// What StateReader does with a `bytes[]` proof: a list the buffer cannot hold
+// is Malformed.
+fn listed_slot(_ buf: MemSpan) -> Result<ProofError, u256> {
+    match AbiList::new(buf, base: 0) {
+        Option::Some(list) => {
+            var nodes = list
+            state::storage(
+                buf,
+                nodes: mut nodes,
+                root: StorageRoot { value: EMPTY_TRIE_ROOT },
+                slot: 0,
+            )
+        },
+        Option::None => Result::Err(ProofError::Malformed),
+    }
+}
+
+#[test]
+fn a_list_with_no_room_for_its_head_words_is_malformed() {
+    // The length word says one element, and the buffer ends after it.
+    var one = MemBuffer::new(32)
+    one.span().write_word(offset: 0, value: 1)
+    assert!(AbiList::new(one.span(), base: 0).is_none())
+    assert!(is_malformed(listed_slot(one.span())))
+    // Three elements, room for two head words.
+    var three = MemBuffer::new(96)
+    three.span().write_word(offset: 0, value: 3)
+    three.span().write_word(offset: 32, value: 64)
+    three.span().write_word(offset: 64, value: 1)
+    assert!(AbiList::new(three.span(), base: 0).is_none())
+    assert!(is_malformed(listed_slot(three.span())))
+}
+
+// --- storage layouts ---------------------------------------------------------------------
+
+#[test]
+fn a_solidity_array_index_wraps_like_solidity() {
+    let base = keccak_words([5])
+    assert!(solidity_array(slot: 5, index: 0) == base)
+    assert!(solidity_array(slot: 5, index: 3) == base + 3)
+    // 2^256 - 1 is -1 modulo 2^256.
+    assert!(
+        solidity_array(
+                slot: 5,
+                index: 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff,
+            )
+            == base - 1,
+    )
+}

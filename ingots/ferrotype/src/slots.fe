@@ -19,9 +19,9 @@ pub fn vyper_mapping(slot: u256, key: u256) -> u256 {
 }
 
 /// Element `index` of a Solidity dynamic array declared at slot `slot`, one
-/// slot per element.
+/// slot per element. The addition wraps around 2^256, as Solidity's does.
 pub fn solidity_array(slot: u256, index: u256) -> u256 {
-    keccak_words([slot]) + index
+    keccak_words([slot]).wrapping_add(index)
 }
 
 /// An address as a mapping key: left-padded to 32 bytes.

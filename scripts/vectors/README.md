@@ -18,7 +18,7 @@ Deterministic Merkle-Patricia proof vectors for Ferrotype's secure-trie verifier
 ```sh
 cd scripts/vectors
 npm ci
-node gen.mjs          # writes fixtures/synthetic/*.json (~15 s)
+node gen.mjs          # writes fixtures/synthetic/*.json and ejs-verdicts.json (~15 s)
 node ref_verify.mjs   # re-checks every vector on disk, exits 1 on any mismatch
 ```
 
@@ -27,7 +27,9 @@ seeded from `keccak256("ferrotype-vectors/v1/<label>")`. Reruns produce byte-ide
 files. To confirm, compare `sha256sum ../../fixtures/synthetic/*.json` before and after.
 
 `gen.mjs` aborts if any vector disagrees with `ref_verify.mjs`. Valid proofs must also
-pass `@ethereumjs/trie`'s own `verifyProof`.
+pass `@ethereumjs/trie`'s own `verifyProof`. What `verifyProof` makes of each invalid
+vector (rejected or accepted, by expected error) is printed under `ejs` and written to
+`ejs-verdicts.json`, which `scripts/render_readme.py` reads.
 
 ## Format
 
@@ -71,6 +73,9 @@ where an inline node costs no proof entry.
 
   If the path differs from the key's next nibbles, the key is absent.
 - Any other node is `Malformed`.
+- Every vector is a storage trie, so a found value must be what storage keeps: a
+  canonical RLP string of at most 32 bytes with no leading zero byte (zero is the
+  empty string, never `0x00`). Anything else is `Malformed`, as in `state::storage`.
 - Once the key is found or proven absent, any unused entry gives `ExtraNodes`.
 
 ## Groups
@@ -79,8 +84,8 @@ where an inline node costs no proof entry.
 |---|---|---|
 | `inclusion.json` | 97 | Random tries of 1, 2, 3, 10, 100, 1000 and 5000 keys. Value kinds: `tiny` (1..0x7f, single-byte RLP), `byte80` (0x81xx), `medium` (2–31 B) and `full` (32 B). Also: the `ext2`/`ext3` tries with extensions on the path; `inline-sibling` (a hashed leaf whose parent branch also holds an embedded leaf); and `boundary-leaf-32` (leaf RLP exactly 32 B, so it is hashed, not embedded). |
 | `inline.json` | 25 | Proofs whose walk passes through an embedded leaf (31 B, depth 9–10). Fields: `inlineDepth`, `inlineLen`, `inlineParentEntry`, `inlineIsFinalLeaf` (always true, see below). |
-| `exclusion.json` | 70 | `shape`: `empty-slot` 20, `leaf-diverge` 23, `ext-diverge` 24, `empty-trie` 3 (root `0x56e8…b421`, `proof: []`). |
-| `invalid.json` | 141 | Mutations of valid proofs (see below). |
+| `exclusion.json` | 73 | `shape`: `empty-slot` 20, `leaf-diverge` 23, `ext-diverge` 24, `empty-trie` 6 (root `0x56e8…b421`, with `proof: []` and with `proof: ["0x80"]`, the empty root node that anvil and reth return). |
+| `invalid.json` | 148 | Mutations of valid proofs (see below). |
 
 Mutations in `invalid.json`:
 
@@ -110,8 +115,14 @@ Mutations in `invalid.json`:
   - `branch-ref-{20,31,33}` and `ext-ref-{31,33,empty}` give a child reference of the
     wrong length
   - `embed-large-node` embeds a 32 B or 68 B node as a list
-- `empty-root/with-node` and `empty-root/with-0x80` apply the rules literally: any entry
-  must hash to the root. Expected: `HashMismatch` and `Malformed`.
+  - `rlp-len-5-bytes` and `rlp-len-8-bytes` write a node's long-form length in 5 or 8
+    bytes whose low 32 bits are the true length (`fc 01 00 00 00 44 …`): a verifier
+    that keeps lengths in a 32-bit integer reads them as valid. Expected: `Malformed`.
+  - `value-leading-zero` and `value-zero-byte` store a value that is not a canonical
+    integer (`0x00` before the value, or zero as the byte `0x00`). Expected: `Malformed`;
+    `verifyProof` does not decode values and accepts them.
+- `empty-root/with-node` applies the rules literally: any entry must hash to the root.
+  Expected: `HashMismatch`.
 
 **Embedded nodes in a secure trie.** A leaf is embedded only if its RLP is under
 32 bytes. With 64-nibble paths that needs depth ≥ 9 and a single-byte stored value.

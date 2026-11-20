@@ -150,7 +150,7 @@ pub fn storage<N: Nodes>(_ buf: MemSpan, nodes: mut N, root: StorageRoot, slot: 
         path: slot_path(slot),
     ) {
         Result::Ok(Lookup::Absent) => Result::Ok(0),
-        Result::Ok(Lookup::Found(value)) => decode_slot(buf, value),
+        Result::Ok(Lookup::Found(value)) => slot_value(buf, value),
         Result::Err(e) => Result::Err(e),
     }
 }
@@ -192,12 +192,13 @@ pub fn storage_observed<N: Nodes, O: Observer>(
         observer: mut observer,
     ) {
         Result::Ok(Lookup::Absent) => Result::Ok(0),
-        Result::Ok(Lookup::Found(value)) => decode_slot(buf, value),
+        Result::Ok(Lookup::Found(value)) => slot_value(buf, value),
         Result::Err(e) => Result::Err(e),
     }
 }
 
-// The leaf holds the RLP list [nonce, balance, storageRoot, codeHash].
+// The leaf holds the RLP list [nonce, balance, storageRoot, codeHash]. The
+// nonce and the balance are canonical integers: no leading zero byte.
 fn decode_account(_ buf: MemSpan, _ value: Item) -> Result<ProofError, Account> {
     let list = match rlp::item_exact(buf, at: value.payload, len: value.len) {
         Option::Some(item) => item,
@@ -225,18 +226,20 @@ fn read_account(_ buf: MemSpan, _ list: Item) -> Option<Account> {
     Option::Some(
         Account {
             exists: true,
-            nonce: nonce.as_word(buf)?,
-            balance: balance.as_word(buf)?,
+            nonce: nonce.as_uint(buf)?,
+            balance: balance.as_uint(buf)?,
             storage_root: StorageRoot { value: storage_root.as_word(buf)? },
             code_hash: CodeHash { value: code_hash.as_word(buf)? },
         },
     )
 }
 
-// The leaf holds rlp(value) with leading zero bytes stripped.
-fn decode_slot(_ buf: MemSpan, _ value: Item) -> Result<ProofError, u256> {
+/// The word a storage leaf's value holds. The leaf holds rlp(value) with
+/// leading zero bytes stripped, so a value with a leading zero byte (and a
+/// zero written as `0x00` rather than as the empty string) is `Malformed`.
+pub fn slot_value(_ buf: MemSpan, _ value: Item) -> Result<ProofError, u256> {
     match rlp::item_exact(buf, at: value.payload, len: value.len) {
-        Option::Some(item) => match item.as_word(buf) {
+        Option::Some(item) => match item.as_uint(buf) {
             Option::Some(word) => Result::Ok(word),
             Option::None => Result::Err(ProofError::Malformed),
         },

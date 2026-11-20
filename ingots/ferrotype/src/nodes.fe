@@ -47,13 +47,14 @@ impl Nodes for Packed {
 pub struct AbiList { base: usize, index: usize, count: usize }
 
 impl AbiList {
-    /// Reads the element count; `None` if `buf` cannot hold it.
+    /// Reads the element count; `None` if `buf` cannot hold the length word
+    /// and one head word per element.
     pub fn new(_ buf: MemSpan, base: usize) -> Option<Self> {
         if base > buf.len() || buf.len() - base < 32 {
             return Option::None
         }
         let count = buf.read_word(base)
-        if count > ((buf.len() - base) / 32) as u256 {
+        if count > ((buf.len() - base - 32) / 32) as u256 {
             return Option::None
         }
         Option::Some(

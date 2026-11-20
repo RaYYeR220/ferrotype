@@ -1,6 +1,7 @@
 // Reference verifier for Ferrotype secure-trie proofs.
 //
-// Mirrors the error semantics of the Fe verifier exactly (see README.md):
+// Mirrors the error semantics of the Fe verifier exactly (see README.md),
+// including how `state::storage` reads a stored value:
 //   result  = { found: true, value } | { found: false } | { error: Kind }
 //   Kind    = HashMismatch | MissingNode | BadReference | Malformed | ExtraNodes
 //
@@ -122,6 +123,16 @@ function childRef(item, inBranch) {
   return { kind: 'hash', hash: item.bytes }
 }
 
+// Every vector is a storage trie, whose leaves hold rlp(uint): a canonical RLP
+// string of at most 32 bytes with no leading zero byte (zero is the empty
+// string, never 0x00).
+function storageInt(bytes) {
+  const it = decodeRlp(bytes)
+  if (it.list) fail('Malformed', 'stored value is a list')
+  if (it.bytes.length > 32) fail('Malformed', `stored value of ${it.bytes.length} bytes`)
+  if (it.bytes.length > 0 && it.bytes[0] === 0) fail('Malformed', 'stored value has a leading zero byte')
+}
+
 /**
  * @param {string|Uint8Array} root  32-byte root
  * @param {string|Uint8Array} path  32-byte path (keccak256(key))
@@ -207,6 +218,7 @@ function walk(rootB, key, entries, trace) {
         }
         const v = node.items[1]
         if (v.list) fail('Malformed', 'leaf value is a list')
+        storageInt(v.bytes)
         return { found: true, value: bytesToHex(v.bytes) }
       }
       info.type = 'extension'
