@@ -172,20 +172,20 @@ The contracts are deployed on Sepolia and the governance flow has run there end 
 <!-- deploy:begin -->
 | Contract | Address | Role |
 |---|---|---|
-| `StateReader` | [`0xc0a2c66ca8931dbe493fbd8e76526f3cd4f83497`](https://sepolia.etherscan.io/address/0xc0a2c66ca8931dbe493fbd8e76526f3cd4f83497) | verifies a storage proof against a state root (`storageAt`, `storageAtPacked`) |
-| `PlebisciteDemo` | [`0xa19e7b96ecdd159c99e18f9dc0c336a35743c5ba`](https://sepolia.etherscan.io/address/0xa19e7b96ecdd159c99e18f9dc0c336a35743c5ba) | governance and treasury for `DemoToken`, 30-minute votes |
-| `DemoToken` | [`0x5cf120f737f3737dbab70cccb4cd18a56f3ad9ec`](https://sepolia.etherscan.io/address/0x5cf120f737f3737dbab70cccb4cd18a56f3ad9ec) | a minimal ERC-20 written in Fe (balances at slot 0, supply at slot 1) |
-| `PlebisciteUSDC` | [`0xb8c210afe1a331b9f7cac2b83bbb284969437f9a`](https://sepolia.etherscan.io/address/0xb8c210afe1a331b9f7cac2b83bbb284969437f9a) | governance for Sepolia USDC (balances with a flag bit at slot 9, supply at slot 11) |
+| `StateReader` | [`0x32d2772c57b9590836d5eec2c6197dfb3f31822c`](https://sepolia.etherscan.io/address/0x32d2772c57b9590836d5eec2c6197dfb3f31822c) | verifies a storage proof against a state root (`storageAt`, `storageAtPacked`) |
+| `PlebisciteDemo` | [`0x5bf1b14291b78b9365d5eb5427fdd982bab3c70b`](https://sepolia.etherscan.io/address/0x5bf1b14291b78b9365d5eb5427fdd982bab3c70b) | governance and treasury for `DemoToken`, 30-minute votes |
+| `DemoToken` | [`0xa7dbb2b154ed725667e51a0fbe79aa7ef659ffed`](https://sepolia.etherscan.io/address/0xa7dbb2b154ed725667e51a0fbe79aa7ef659ffed) | a minimal ERC-20 written in Fe (balances at slot 0, supply at slot 1) |
+| `PlebisciteUSDC` | [`0xf176337560f3e6f3dd375722a0c151264f683d50`](https://sepolia.etherscan.io/address/0xf176337560f3e6f3dd375722a0c151264f683d50) | governance for Sepolia USDC (balances with a flag bit at slot 9, supply at slot 11) |
 
 The governance run on Sepolia, transaction by transaction:
 
-1. proposal 1 opens, anchored to a block hash the chain remembers: [`0xb7339bf6…`](https://sepolia.etherscan.io/tx/0xb7339bf6dd65d262f82cddc5f61a7b8562df8e5cf3bda31db98222515ed55c4b)
-1. Alice sends 500 tokens to Carol after the snapshot: [`0x2d7a26e6…`](https://sepolia.etherscan.io/tx/0x2d7a26e6eb43709e5cada3d36ab6470cf4ff8275f365fb7128afc81c5fa662df)
-1. Alice votes for with 600 (her snapshot balance, not today's 100): [`0xb23032a1…`](https://sepolia.etherscan.io/tx/0xb23032a1c2092f9218c3c796156f27a9e4f49f6d5535fa83278c5944d3de93e0)
-1. Bob votes against with 300: [`0xa2792fcf…`](https://sepolia.etherscan.io/tx/0xa2792fcf57096d7e004ae4ec950ab79a98a5328c5c61934f4792bb3c43a08539)
-1. Carol votes for with 100 (not the 600 she holds now): [`0xc1b36a38…`](https://sepolia.etherscan.io/tx/0xc1b36a38828bfaff05b02e322c8ed6ed61d49b19a43cf0b6f69654623a4fee24)
-1. after the vote, the treasury pays 0.001 ETH to `0x…c0de`: [`0x74d597cb…`](https://sepolia.etherscan.io/tx/0x74d597cb0c766cc44bd026c7bc020994aa3411d5edb656773d29cc074f9eb162)
-1. a USDC proposal opens, so anyone can ask for a holder's voting power: [`0x03dd0bff…`](https://sepolia.etherscan.io/tx/0x03dd0bff1e307c8c21548f0d111b1008e92c034a2123e60e6538cb726514f99e)
+1. proposal 1 opens, anchored to a block hash the chain remembers: [`0xd15eb4d0…`](https://sepolia.etherscan.io/tx/0xd15eb4d0384ae115b4a1ceef1cd553e3c7d7a86b08d7045d58a784ac2e44b0a3)
+1. Alice sends 500 tokens to Carol after the snapshot: [`0x1c22a8a9…`](https://sepolia.etherscan.io/tx/0x1c22a8a90981e838cb171b74c041ebc6a66d17a0e98d08980a2bf538d4697531)
+1. Alice votes for with 600 (her snapshot balance, not today's 100): [`0x749174c1…`](https://sepolia.etherscan.io/tx/0x749174c1b16b5db6134e9cde39da45a1953039fed90616d4a387adcd96d8b07b)
+1. Bob votes against with 300: [`0x246eecca…`](https://sepolia.etherscan.io/tx/0x246eeccadf17b758ff2cddd8bcb84b34e30c680dd41922de8c6ccbec305d0b01)
+1. Carol votes for with 100 (not the 600 she holds now): [`0x64e4c092…`](https://sepolia.etherscan.io/tx/0x64e4c0925588df940231f36310e93e2792a403d629d28ccefbddd67e328cc856)
+1. after the vote, the treasury pays 0.001 ETH to `0x…c0de`: [`0x73217c18…`](https://sepolia.etherscan.io/tx/0x73217c18f15f373ddc49a0fe164dd73ed3053ffe2a1147f00cabd405bc80f779)
+1. a USDC proposal opens, so anyone can ask for a holder's voting power: [`0x166bfd2b…`](https://sepolia.etherscan.io/tx/0x166bfd2b6f789df8153ec2a56e202145f802037286a002ae20a4355cc0f49ed1)
 <!-- deploy:end -->
 
 The [demo page](https://ferrotype.vercel.app/try) runs one read through the browser module and the deployed `StateReader` side by side, next to the native CLI's recorded output on the same file, and asks both Plebiscites for voting power. Anyone can ask the deployed contracts, with no funds: `StateReader` checks any proof against any state root (mainnet proofs included), and each Plebiscite answers `votingPower(id, holder, proof)` for a balance proof at its snapshot block. [`deployments/sepolia-snapshots.json`](deployments/sepolia-snapshots.json) keeps such proofs for the three demo voters and eight USDC holders, fetched when the proposals opened (`scripts/capture_snapshots.py`). `python3 scripts/check_live.py` asks the contracts all of this with `eth_call` and prints a pass or fail per check.

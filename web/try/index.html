@@ -130,7 +130,7 @@
         <article class="lane" id="lane-evm" aria-labelledby="lane-evm-h">
           <div class="lane-k"><span>Contract · EVM</span><span class="tag live">Live</span></div>
           <h3 id="lane-evm-h">On Sepolia</h3>
-          <div class="lane-body"><code>eth_call</code> to <a class="ext" data-addr="StateReader" href="https://sepolia.etherscan.io/address/0xc0a2c66ca8931dbe493fbd8e76526f3cd4f83497">StateReader</a>, deployed on Sepolia. It takes the state root as an argument, so it checks mainnet proofs too.</div>
+          <div class="lane-body"><code>eth_call</code> to <a class="ext" data-addr="StateReader" href="https://sepolia.etherscan.io/address/0x32d2772c57b9590836d5eec2c6197dfb3f31822c">StateReader</a>, deployed on Sepolia. It takes the state root as an argument, so it checks mainnet proofs too.</div>
         </article>
         <article class="lane" id="lane-cli" aria-labelledby="lane-cli-h">
           <div class="lane-k"><span>CLI · native</span><span class="tag rec">Recorded</span></div>
@@ -152,16 +152,16 @@
 
     <div class="daos reveal">
       <article class="dao" data-dao="demo" aria-labelledby="dao-demo-h">
-        <div class="dao-k"><span>Plebiscite · DemoToken</span><a class="ext" data-addr="PlebisciteDemo" href="https://sepolia.etherscan.io/address/0xa19e7b96ecdd159c99e18f9dc0c336a35743c5ba">0xa19e…c5ba</a></div>
+        <div class="dao-k"><span>Plebiscite · DemoToken</span><a class="ext" data-addr="PlebisciteDemo" href="https://sepolia.etherscan.io/address/0x5bf1b14291b78b9365d5eb5427fdd982bab3c70b">0x5bf1…c70b</a></div>
         <h3 id="dao-demo-h">Demo DAO</h3>
-        <p class="dao-p"><span data-n="demo_voters">3</span> voters, one proposal, counted at block <span data-n="demo_block">12,173,862</span>.</p>
+        <p class="dao-p"><span data-n="demo_voters">3</span> voters, one proposal, counted at block <span data-n="demo_block">12,177,607</span>.</p>
         <dl class="kv" id="dao-demo"></dl>
         <p class="dao-s" id="dao-demo-s" role="status">Asking the contract…</p>
       </article>
       <article class="dao" data-dao="usdc" aria-labelledby="dao-usdc-h">
-        <div class="dao-k"><span>Plebiscite · USDC</span><a class="ext" data-addr="PlebisciteUSDC" href="https://sepolia.etherscan.io/address/0xb8c210afe1a331b9f7cac2b83bbb284969437f9a">0xb8c2…7f9a</a></div>
+        <div class="dao-k"><span>Plebiscite · USDC</span><a class="ext" data-addr="PlebisciteUSDC" href="https://sepolia.etherscan.io/address/0xf176337560f3e6f3dd375722a0c151264f683d50">0xf176…3d50</a></div>
         <h3 id="dao-usdc-h">USDC DAO</h3>
-        <p class="dao-p">Sepolia USDC, flag bit and all, counted at block <span data-n="usdc_block">12,173,868</span>.</p>
+        <p class="dao-p">Sepolia USDC, flag bit and all, counted at block <span data-n="usdc_block">12,177,613</span>.</p>
         <dl class="kv" id="dao-usdc"></dl>
         <p class="dao-s" id="dao-usdc-s" role="status">Asking the contract…</p>
       </article>
@@ -176,7 +176,7 @@
             <button type="button" role="tab" aria-selected="false" data-dao="usdc" tabindex="-1">USDC DAO</button>
           </div>
         </div>
-        <p class="power-note" id="power-note">Proof fetched at the snapshot block when the proposal opened (block <span data-n="demo_block">12,173,862</span>); the contract call is live.</p>
+        <p class="power-note" id="power-note">Proof fetched at the snapshot block when the proposal opened (block <span data-n="demo_block">12,177,607</span>); the contract call is live.</p>
         <div class="holders" id="holders" role="radiogroup" aria-label="Holder"></div>
         <div class="power-b">
           <button type="button" class="btn btn-primary btn-sm" id="ask">Ask the contract</button>
@@ -190,15 +190,15 @@
         <div class="rules-k">Recorded on Sepolia: the Demo DAO’s proposal</div>
         <!-- txs:begin -->
       <ol class="txs">
-        <li><a href="https://sepolia.etherscan.io/tx/0xb7339bf6dd65d262f82cddc5f61a7b8562df8e5cf3bda31db98222515ed55c4b"><span class="tx-h">0xb7339bf6…</span></a><span>Proposal 1 opens, counted at block 12,173,862: the snapshot.</span></li>
-        <li><a href="https://sepolia.etherscan.io/tx/0x2d7a26e6eb43709e5cada3d36ab6470cf4ff8275f365fb7128afc81c5fa662df"><span class="tx-h">0x2d7a26e6…</span></a><span>Alice sends 500 tokens to Carol after the snapshot: her vote still counts 600.</span></li>
-        <li><a href="https://sepolia.etherscan.io/tx/0xb23032a1c2092f9218c3c796156f27a9e4f49f6d5535fa83278c5944d3de93e0"><span class="tx-h">0xb23032a1…</span></a><span>Alice votes for with 600.</span></li>
-        <li><a href="https://sepolia.etherscan.io/tx/0xa2792fcf57096d7e004ae4ec950ab79a98a5328c5c61934f4792bb3c43a08539"><span class="tx-h">0xa2792fcf…</span></a><span>Bob votes against with 300.</span></li>
-        <li><a href="https://sepolia.etherscan.io/tx/0xc1b36a38828bfaff05b02e322c8ed6ed61d49b19a43cf0b6f69654623a4fee24"><span class="tx-h">0xc1b36a38…</span></a><span>Carol votes for with 100, not the 600 she holds after the transfer.</span></li>
-        <li><a href="https://sepolia.etherscan.io/tx/0x74d597cb0c766cc44bd026c7bc020994aa3411d5edb656773d29cc074f9eb162"><span class="tx-h">0x74d597cb…</span></a><span>The proposal passed and Execute pays it: the one call the treasury can make.</span></li>
+        <li><a href="https://sepolia.etherscan.io/tx/0xd15eb4d0384ae115b4a1ceef1cd553e3c7d7a86b08d7045d58a784ac2e44b0a3"><span class="tx-h">0xd15eb4d0…</span></a><span>Proposal 1 opens, counted at block 12,177,607: the snapshot.</span></li>
+        <li><a href="https://sepolia.etherscan.io/tx/0x1c22a8a90981e838cb171b74c041ebc6a66d17a0e98d08980a2bf538d4697531"><span class="tx-h">0x1c22a8a9…</span></a><span>Alice sends 500 tokens to Carol after the snapshot: her vote still counts 600.</span></li>
+        <li><a href="https://sepolia.etherscan.io/tx/0x749174c1b16b5db6134e9cde39da45a1953039fed90616d4a387adcd96d8b07b"><span class="tx-h">0x749174c1…</span></a><span>Alice votes for with 600.</span></li>
+        <li><a href="https://sepolia.etherscan.io/tx/0x246eeccadf17b758ff2cddd8bcb84b34e30c680dd41922de8c6ccbec305d0b01"><span class="tx-h">0x246eecca…</span></a><span>Bob votes against with 300.</span></li>
+        <li><a href="https://sepolia.etherscan.io/tx/0x64e4c0925588df940231f36310e93e2792a403d629d28ccefbddd67e328cc856"><span class="tx-h">0x64e4c092…</span></a><span>Carol votes for with 100, not the 600 she holds after the transfer.</span></li>
+        <li><a href="https://sepolia.etherscan.io/tx/0x73217c18f15f373ddc49a0fe164dd73ed3053ffe2a1147f00cabd405bc80f779"><span class="tx-h">0x73217c18…</span></a><span>The proposal passed and Execute pays it: the one call the treasury can make.</span></li>
       </ol>
       <!-- txs:end -->
-        <p class="rec-note">Built with Fe <span data-n="fe_version">26.6.0</span> and deployed as is: <a class="ext" data-addr="StateReader" href="https://sepolia.etherscan.io/address/0xc0a2c66ca8931dbe493fbd8e76526f3cd4f83497">StateReader</a> · <a class="ext" data-addr="DemoToken" href="https://sepolia.etherscan.io/address/0x5cf120f737f3737dbab70cccb4cd18a56f3ad9ec">DemoToken</a> · <a class="ext" data-addr="PlebisciteDemo" href="https://sepolia.etherscan.io/address/0xa19e7b96ecdd159c99e18f9dc0c336a35743c5ba">Plebiscite (DemoToken)</a> · <a class="ext" data-addr="PlebisciteUSDC" href="https://sepolia.etherscan.io/address/0xb8c210afe1a331b9f7cac2b83bbb284969437f9a">Plebiscite (USDC)</a></p>
+        <p class="rec-note">Built with Fe <span data-n="fe_version">26.6.0</span> and deployed as is: <a class="ext" data-addr="StateReader" href="https://sepolia.etherscan.io/address/0x32d2772c57b9590836d5eec2c6197dfb3f31822c">StateReader</a> · <a class="ext" data-addr="DemoToken" href="https://sepolia.etherscan.io/address/0xa7dbb2b154ed725667e51a0fbe79aa7ef659ffed">DemoToken</a> · <a class="ext" data-addr="PlebisciteDemo" href="https://sepolia.etherscan.io/address/0x5bf1b14291b78b9365d5eb5427fdd982bab3c70b">Plebiscite (DemoToken)</a> · <a class="ext" data-addr="PlebisciteUSDC" href="https://sepolia.etherscan.io/address/0xf176337560f3e6f3dd375722a0c151264f683d50">Plebiscite (USDC)</a></p>
       </div>
     </div>
   </div>
