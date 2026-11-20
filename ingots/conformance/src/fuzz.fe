@@ -7,8 +7,11 @@
 //!
 //! - the verifier returns a verdict and never panics, whatever the bytes;
 //! - it never proves a value other than the true one: a damaged proof either
-//!   still proves the true value (the damage missed every byte that matters)
-//!   or is rejected.
+//!   still proves the true value or is rejected.
+//!
+//! A round whose damage happens to leave the bytes as they were (a byte
+//! overwritten with itself, a window copied over identical bytes) is counted
+//! as such, by comparing the bytes.
 //!
 //! Every verdict is folded into a digest. The same seed gives the same
 //! digest on every target only if every verdict is the same, so one constant
@@ -49,8 +52,15 @@ impl Rng {
 const SAME_VALUE: u256 = 0
 const WRONG_VALUE: u256 = 100
 
-/// The outcome of a fuzzing run.
-pub struct Outcome { pub digest: u256, pub accepted: usize, pub rejected: usize, pub wrong: usize }
+/// The outcome of a fuzzing run. `unchanged` counts the rounds whose damage
+/// left the proof's bytes exactly as they were.
+pub struct Outcome {
+    pub digest: u256,
+    pub accepted: usize,
+    pub rejected: usize,
+    pub wrong: usize,
+    pub unchanged: usize,
+}
 
 impl Copy for Outcome {}
 
@@ -61,11 +71,11 @@ pub fn run(rounds: usize, seed: u64) -> Outcome {
     let weth = decode_hex(mainnet_weth::slot0_packed()).unwrap()
     let account = decode_hex(mainnet_usdc::account_packed()).unwrap()
     var rng = Rng::new(seed)
-    var outcome = Outcome { digest: 0, accepted: 0, rejected: 0, wrong: 0 }
+    var outcome = Outcome { digest: 0, accepted: 0, rejected: 0, wrong: 0, unchanged: 0 }
     var round: usize = 0
     while round < rounds {
         let case = rng.below(4)
-        let verdict = if case == 0 {
+        let played = if case == 0 {
             storage_round(
                 slot0.span(),
                 mut rng,
@@ -92,6 +102,10 @@ pub fn run(rounds: usize, seed: u64) -> Outcome {
         } else {
             account_round(account.span(), mut rng)
         }
+        let verdict = played.verdict
+        if played.unchanged {
+            outcome.unchanged += 1
+        }
         if verdict == SAME_VALUE {
             outcome.accepted += 1
         } else if verdict == WRONG_VALUE {
@@ -105,10 +119,15 @@ pub fn run(rounds: usize, seed: u64) -> Outcome {
     outcome
 }
 
-fn storage_round(_ base: MemSpan, _ rng: mut Rng, root: u256, slot: u256, truth: u256) -> u256 {
+/// One round's verdict, and whether its damage left the bytes unchanged.
+struct Round { verdict: u256, unchanged: bool }
+
+impl Copy for Round {}
+
+fn storage_round(_ base: MemSpan, _ rng: mut Rng, root: u256, slot: u256, truth: u256) -> Round {
     let damaged = mutate(base, mut rng)
     var nodes = Packed::new(start: 0, len: damaged.len())
-    match state::storage(
+    let verdict = match state::storage(
         damaged.span(),
         nodes: mut nodes,
         root: StorageRoot { value: root },
@@ -121,12 +140,13 @@ fn storage_round(_ base: MemSpan, _ rng: mut Rng, root: u256, slot: u256, truth:
         },
         Result::Err(e) => code(e),
     }
+    Round { verdict, unchanged: same_bytes(damaged.span(), base) }
 }
 
-fn account_round(_ base: MemSpan, _ rng: mut Rng) -> u256 {
+fn account_round(_ base: MemSpan, _ rng: mut Rng) -> Round {
     let damaged = mutate(base, mut rng)
     var nodes = Packed::new(start: 0, len: damaged.len())
-    match state::account(
+    let verdict = match state::account(
         damaged.span(),
         nodes: mut nodes,
         root: StateRoot { value: mainnet_usdc::STATE_ROOT },
@@ -143,6 +163,28 @@ fn account_round(_ base: MemSpan, _ rng: mut Rng) -> u256 {
         },
         Result::Err(e) => code(e),
     }
+    Round { verdict, unchanged: same_bytes(damaged.span(), base) }
+}
+
+// Whether `a` and `b` hold the same bytes.
+fn same_bytes(_ a: MemSpan, _ b: MemSpan) -> bool {
+    if a.len() != b.len() {
+        return false
+    }
+    var i: usize = 0
+    while i + 32 <= a.len() {
+        if a.read_word(i) != b.read_word(i) {
+            return false
+        }
+        i += 32
+    }
+    while i < a.len() {
+        if a.byte_at(i) != b.byte_at(i) {
+            return false
+        }
+        i += 1
+    }
+    true
 }
 
 // A damaged copy of `base`.

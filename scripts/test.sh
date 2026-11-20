@@ -35,6 +35,7 @@ target/fuzz/fuzz 1000000 1 | tee "$LOG"
 FUZZ_TRUE=$(sed -nE 's/^true +([0-9]+).*/\1/p' "$LOG")
 FUZZ_REJECTED=$(sed -nE 's/^rejected +([0-9]+)/\1/p' "$LOG")
 FUZZ_WRONG=$(sed -nE 's/^wrong +([0-9]+)/\1/p' "$LOG")
+FUZZ_UNCHANGED=$(sed -nE 's/^unchanged +([0-9]+).*/\1/p' "$LOG")
 
 if command -v forge >/dev/null; then
   echo "== gas benchmark"
@@ -58,6 +59,7 @@ cat > results/tests.json <<EOF
   "fuzz_true_value": $FUZZ_TRUE,
   "fuzz_rejected": $FUZZ_REJECTED,
   "fuzz_wrong_value": $FUZZ_WRONG,
+  "fuzz_unchanged": $FUZZ_UNCHANGED,
   "end_to_end": $E2E
 }
 EOF

@@ -14,7 +14,9 @@ fn a_million_damaged_proofs_never_prove_a_wrong_value() uses (out: mut Stdout) {
         outcome.rejected,
         " rejected, ",
         outcome.wrong,
-        " wrong",
+        " wrong, ",
+        outcome.unchanged,
+        " left unchanged",
     )
     assert!(outcome.wrong == 0)
 }

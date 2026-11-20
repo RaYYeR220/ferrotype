@@ -1,6 +1,7 @@
 //! `fuzz [ROUNDS] [SEED]`: damage real mainnet proofs at random and verify
 //! them, natively. Prints how many still prove the true value, how many are
-//! rejected, and how many prove a wrong value (which must be zero), and the
+//! rejected, and how many prove a wrong value (which must be zero); how many
+//! rounds left the bytes unchanged (counted by comparing them); and the
 //! digest of every verdict, which any other build of the verifier must
 //! reproduce for the same rounds and seed.
 
@@ -29,6 +30,11 @@ pub fn main() -> i32 uses (args: Args, out: mut Stdout) {
     )
     println!("rejected  ", outcome.rejected)
     println!("wrong     ", outcome.wrong)
+    println!(
+        "unchanged ",
+        outcome.unchanged,
+        " rounds left the bytes as they were",
+    )
     println!("digest    0x", hex(outcome.digest, 32))
     if outcome.wrong == 0 { 0 } else { 1 }
 }
