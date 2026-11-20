@@ -112,7 +112,8 @@ for key, dao in snaps["daos"].items():
 demo = dep["contracts"]["PlebisciteDemo"]
 status, out = call(demo, TALLY + word(1))
 votes_for, votes_against = int(out[2:66], 16) // 10**18, int(out[66:130], 16) // 10**18
-print(f"\nDemo proposal 1: {votes_for} for, {votes_against} against")
-failed += (votes_for, votes_against) != (700, 300)
+executed = int(out[322:386], 16) == 1
+print(f"\nDemo proposal 1: {votes_for} for, {votes_against} against, executed: {'yes' if executed else 'no'}")
+failed += (votes_for, votes_against) != (700, 300) or not executed
 print("\nall checks passed" if not failed else f"\n{failed} check(s) failed")
 sys.exit(1 if failed else 0)
