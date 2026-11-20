@@ -80,5 +80,43 @@ text = re.sub(
 )
 for name, value in figures.items():
     text = re.sub(rf"<!-- n:{name} -->.*?<!-- /n -->", f"<!-- n:{name} -->{value}<!-- /n -->", text)
+
+# The Sepolia deployment, from deployments/sepolia.json (scripts/deploy.sh).
+deployment = root / "deployments" / "sepolia.json"
+if deployment.exists():
+    dep = json.loads(deployment.read_text())
+    scan = "https://sepolia.etherscan.io"
+    contracts = {
+        "StateReader": "verifies a storage proof against a state root (`storageAt`, `storageAtPacked`)",
+        "PlebisciteDemo": "governance and treasury for `DemoToken`, 30-minute votes",
+        "DemoToken": "a plain ERC-20 written in Fe (balances at slot 0, supply at slot 1)",
+        "PlebisciteUSDC": "governance for Sepolia USDC (balances with a flag bit at slot 9, supply at slot 11)",
+    }
+    steps = {
+        "propose": "proposal 1 opens, anchored to a block hash the chain remembers",
+        "transfer_after_snapshot": "Alice sends 500 tokens to Carol after the snapshot",
+        "vote_alice": "Alice votes for with 600 (her snapshot balance, not today's 100)",
+        "vote_bob": "Bob votes against with 300",
+        "vote_carol": "Carol votes for with 100 (not the 600 she holds now)",
+        "execute": "after the vote, the treasury pays 0.001 ETH to `0x…c0de`",
+        "propose_usdc": "a USDC proposal opens, so anyone can ask for a holder's voting power",
+    }
+    lines = ["| Contract | Address | Role |", "|---|---|---|"]
+    for name, role in contracts.items():
+        if name in dep["contracts"]:
+            a = dep["contracts"][name]
+            lines.append(f"| `{name}` | [`{a}`]({scan}/address/{a}) | {role} |")
+    lines += ["", "The governance run on Sepolia, transaction by transaction:", ""]
+    for key, what in steps.items():
+        if key in dep["txs"]:
+            h = dep["txs"][key]
+            lines.append(f"1. {what}: [`{h[:10]}…`]({scan}/tx/{h})")
+    text = re.sub(
+        r"<!-- deploy:begin -->.*?<!-- deploy:end -->",
+        "<!-- deploy:begin -->\n" + "\n".join(lines) + "\n<!-- deploy:end -->",
+        text,
+        flags=re.S,
+    )
+
 readme.write_text(text, encoding="utf-8", newline="\n")
-print("README.md: numbers rendered from bench/results/gas.json and results/tests.json")
+print("README.md: rendered from bench/results/gas.json, results/tests.json and deployments/sepolia.json")

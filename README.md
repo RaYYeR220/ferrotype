@@ -160,6 +160,32 @@ The WebAssembly backend is a Cargo feature that the Fe release binaries do not i
 
 ## Demo
 
+### Live on Sepolia
+
+The contracts are deployed on Sepolia and the governance flow has run there end to end. Every address and transaction below is rendered from [`deployments/sepolia.json`](deployments/sepolia.json), written by `scripts/deploy.sh`.
+
+<!-- deploy:begin -->
+| Contract | Address | Role |
+|---|---|---|
+| `StateReader` | [`0xc0a2c66ca8931dbe493fbd8e76526f3cd4f83497`](https://sepolia.etherscan.io/address/0xc0a2c66ca8931dbe493fbd8e76526f3cd4f83497) | verifies a storage proof against a state root (`storageAt`, `storageAtPacked`) |
+| `PlebisciteDemo` | [`0xa19e7b96ecdd159c99e18f9dc0c336a35743c5ba`](https://sepolia.etherscan.io/address/0xa19e7b96ecdd159c99e18f9dc0c336a35743c5ba) | governance and treasury for `DemoToken`, 30-minute votes |
+| `DemoToken` | [`0x5cf120f737f3737dbab70cccb4cd18a56f3ad9ec`](https://sepolia.etherscan.io/address/0x5cf120f737f3737dbab70cccb4cd18a56f3ad9ec) | a plain ERC-20 written in Fe (balances at slot 0, supply at slot 1) |
+| `PlebisciteUSDC` | [`0xb8c210afe1a331b9f7cac2b83bbb284969437f9a`](https://sepolia.etherscan.io/address/0xb8c210afe1a331b9f7cac2b83bbb284969437f9a) | governance for Sepolia USDC (balances with a flag bit at slot 9, supply at slot 11) |
+
+The governance run on Sepolia, transaction by transaction:
+
+1. proposal 1 opens, anchored to a block hash the chain remembers: [`0xb7339bf6…`](https://sepolia.etherscan.io/tx/0xb7339bf6dd65d262f82cddc5f61a7b8562df8e5cf3bda31db98222515ed55c4b)
+1. Alice sends 500 tokens to Carol after the snapshot: [`0x2d7a26e6…`](https://sepolia.etherscan.io/tx/0x2d7a26e6eb43709e5cada3d36ab6470cf4ff8275f365fb7128afc81c5fa662df)
+1. Alice votes for with 600 (her snapshot balance, not today's 100): [`0xb23032a1…`](https://sepolia.etherscan.io/tx/0xb23032a1c2092f9218c3c796156f27a9e4f49f6d5535fa83278c5944d3de93e0)
+1. Bob votes against with 300: [`0xa2792fcf…`](https://sepolia.etherscan.io/tx/0xa2792fcf57096d7e004ae4ec950ab79a98a5328c5c61934f4792bb3c43a08539)
+1. Carol votes for with 100 (not the 600 she holds now): [`0xc1b36a38…`](https://sepolia.etherscan.io/tx/0xc1b36a38828bfaff05b02e322c8ed6ed61d49b19a43cf0b6f69654623a4fee24)
+1. a USDC proposal opens, so anyone can ask for a holder's voting power: [`0x03dd0bff…`](https://sepolia.etherscan.io/tx/0x03dd0bff1e307c8c21548f0d111b1008e92c034a2123e60e6538cb726514f99e)
+<!-- deploy:end -->
+
+Anyone can ask the deployed contracts, with no funds: `StateReader` checks any proof against any state root (mainnet proofs included), and each Plebiscite answers `votingPower(id, holder, proof)` for a balance proof at its snapshot block. [`deployments/sepolia-snapshots.json`](deployments/sepolia-snapshots.json) keeps such proofs for the three demo voters and eight USDC holders, fetched when the proposals opened (`scripts/capture_snapshots.py`). `python3 scripts/check_live.py` asks the contracts all of this with `eth_call` and prints a pass or fail per check.
+
+### From a terminal
+
 Read a slot of any contract, proven, from any node:
 
 ```
@@ -182,7 +208,7 @@ The governance flow end to end, on a local chain (`scripts/e2e.sh`): deploy a pl
 ## Limitations
 
 - Fe 26 is not production-ready, and neither is this code: it is unaudited. Use it on testnets.
-- A proposal must be opened within 256 blocks of its snapshot block (configurable up to 8,191 through EIP-2935). Fetching a proof for an older block needs an archive node.
+- A proposal must be opened within 256 blocks of its snapshot block (configurable up to 8,191 through EIP-2935). Fetching a proof for an older block needs an archive node, and free public nodes keep very little: in November 2026 publicnode answers `eth_getProof` on Sepolia only for the newest block and Tenderly's gateway for about the last hundred. A voter therefore votes soon after a proposal opens, or uses an archive node.
 - `Plebiscite` reads balances from a token's own storage, so it needs the token's layout: Solidity and Vyper mappings and USDC-style flag bits are built in. Rebasing tokens (stETH shares), balances behind proxies with custom layouts, delegation and vote by signature are not supported.
 - A proposal makes one call. Voters vote from the address that held the tokens; a smart-wallet holder votes through its wallet.
 - The native CLI needs x86-64 Linux or AArch64 macOS (Fe's native targets) and `curl`. Its JSON reader does not decode string escapes; JSON-RPC answers do not use them.

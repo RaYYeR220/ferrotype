@@ -1,0 +1,34 @@
+{
+  "network": "sepolia",
+  "chain_id": "11155111",
+  "deployer": "0x8418dB75cD17250f3196ef51d50dc43e5DEDebd5",
+  "fe": "fe 26.6.0",
+  "contracts": {
+    "StateReader": "0xc0a2c66ca8931dbe493fbd8e76526f3cd4f83497",
+    "DemoToken": "0x5cf120f737f3737dbab70cccb4cd18a56f3ad9ec",
+    "PlebisciteDemo": "0xa19e7b96ecdd159c99e18f9dc0c336a35743c5ba",
+    "PlebisciteUSDC": "0xb8c210afe1a331b9f7cac2b83bbb284969437f9a"
+  },
+  "txs": {
+    "deploy_StateReader": "0xcd7a23ae549afdc39177f854b2073a1155ff9f111413e30b8cae558f1797d8b8",
+    "deploy_DemoToken": "0x9677211c897b51ec1cea2c7e8060f67a3ef2689268b2ba188e7c52263281344e",
+    "deploy_PlebisciteDemo": "0x94d4f78e35c0b4a0d80c2b2cce1f9fe4301a0bb6b330c0ab061c78fb57639a5c",
+    "mint_alice": "0x04790047d2a6574a8d7ffb55b860b74f052e490a9ee151cef8cd57c0a49eb2a2",
+    "mint_bob": "0x83d8ee64a61c0d9da1ad4dec08fa772cf59631102b15c233e065bdf9d1159e0a",
+    "mint_carol": "0x7b084f9a93e153e63fc2fc0f4c874659652b78319680e3a504203bbd5d78964e",
+    "deposit": "0xeb5b13c1ce6116f98db153df1d0598f5df90cd974b74d32ce1f2e2c954e28341",
+    "propose": "0xb7339bf6dd65d262f82cddc5f61a7b8562df8e5cf3bda31db98222515ed55c4b",
+    "transfer_after_snapshot": "0x2d7a26e6eb43709e5cada3d36ab6470cf4ff8275f365fb7128afc81c5fa662df",
+    "vote_alice": "0xb23032a1c2092f9218c3c796156f27a9e4f49f6d5535fa83278c5944d3de93e0",
+    "vote_bob": "0xa2792fcf57096d7e004ae4ec950ab79a98a5328c5c61934f4792bb3c43a08539",
+    "vote_carol": "0xc1b36a38828bfaff05b02e322c8ed6ed61d49b19a43cf0b6f69654623a4fee24",
+    "deploy_PlebisciteUSDC": "0x0669b8363088285b89c55c5bc9b0955b5eb89575a7c80573b70f47a840c2b877",
+    "propose_usdc": "0x03dd0bff1e307c8c21548f0d111b1008e92c034a2123e60e6538cb726514f99e"
+  },
+  "voters": {
+    "alice": "0x8418dB75cD17250f3196ef51d50dc43e5DEDebd5",
+    "bob": "0x11a911878A5a9a4667317fB13D66b489a6635b65",
+    "carol": "0x52f36EaBdeF5eaf40B88589c3b5892Dc383b4818"
+  },
+  "usdc": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
+}

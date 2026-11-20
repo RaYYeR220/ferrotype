@@ -56,6 +56,14 @@ target/bin/ferrotype balance --rpc https://ethereum-rpc.publicnode.com \
 
 It fetches the latest header and the proofs, rebuilds the header and checks its hash, proves the account and the slot, and reports the balance and USDC's blacklist flag. Sepolia already runs the Amsterdam fork, whose headers carry two more fields; `--rpc https://ethereum-sepolia-rpc.publicnode.com` works too.
 
+The contracts deployed on Sepolia answer with `eth_call`, so checking them needs no key and no funds (Python 3, standard library only):
+
+```sh
+python3 scripts/check_live.py
+```
+
+It asks `StateReader` to prove the four saved mainnet reads against their state roots and to refuse them with a node missing or a bit flipped, asks both Plebiscites for the voting power of every voter whose proof was saved at the snapshot block (`deployments/sepolia-snapshots.json`) and to refuse one voter's proof sent for another, and reads the demo proposal's tally (700 for, 300 against, from balances that are 100 and 600 today). The addresses and every transaction of the governance run are in the README's "Live on Sepolia" section.
+
 ## 5. Try to break it
 
 - Change one byte of a proof in `fixtures/mainnet/usdc.json` and run `target/bin/ferrotype verify fixtures/mainnet/usdc.json`: the proof is rejected with a reason.
