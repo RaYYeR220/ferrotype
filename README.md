@@ -179,6 +179,7 @@ The governance run on Sepolia, transaction by transaction:
 1. Alice votes for with 600 (her snapshot balance, not today's 100): [`0xb23032a1…`](https://sepolia.etherscan.io/tx/0xb23032a1c2092f9218c3c796156f27a9e4f49f6d5535fa83278c5944d3de93e0)
 1. Bob votes against with 300: [`0xa2792fcf…`](https://sepolia.etherscan.io/tx/0xa2792fcf57096d7e004ae4ec950ab79a98a5328c5c61934f4792bb3c43a08539)
 1. Carol votes for with 100 (not the 600 she holds now): [`0xc1b36a38…`](https://sepolia.etherscan.io/tx/0xc1b36a38828bfaff05b02e322c8ed6ed61d49b19a43cf0b6f69654623a4fee24)
+1. after the vote, the treasury pays 0.001 ETH to `0x…c0de`: [`0x74d597cb…`](https://sepolia.etherscan.io/tx/0x74d597cb0c766cc44bd026c7bc020994aa3411d5edb656773d29cc074f9eb162)
 1. a USDC proposal opens, so anyone can ask for a holder's voting power: [`0x03dd0bff…`](https://sepolia.etherscan.io/tx/0x03dd0bff1e307c8c21548f0d111b1008e92c034a2123e60e6538cb726514f99e)
 <!-- deploy:end -->
 
