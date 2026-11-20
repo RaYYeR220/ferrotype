@@ -64,7 +64,7 @@ The contracts deployed on Sepolia answer with `eth_call`, so checking them needs
 python3 scripts/check_live.py
 ```
 
-It asks `StateReader` to prove the four saved mainnet reads against their state roots and to refuse them with a node missing or a bit flipped, asks both Plebiscites for the voting power of every voter whose proof was saved at the snapshot block (`deployments/sepolia-snapshots.json`) and to refuse one voter's proof sent for another, and reads the demo proposal's tally (700 for, 300 against, from balances that are 100 and 600 today). The addresses and every transaction of the governance run are in the README's "Live on Sepolia" section.
+It asks `StateReader` to prove the five saved mainnet reads against their state roots and to refuse them with a node missing or a bit flipped, asks both Plebiscites for the voting power of every voter whose proof was saved at the snapshot block (`deployments/sepolia-snapshots.json`) and to refuse one voter's proof sent for another, and reads the demo proposal's tally (700 for, 300 against, from balances that are 100 and 600 today). The addresses and every transaction of the governance run are in the README's "Live on Sepolia" section.
 
 ## 5. Try to break it
 
@@ -72,3 +72,13 @@ It asks `StateReader` to prove the four saved mainnet reads against their state 
 - `target/fuzz/fuzz 100000 7` damages proofs with your own seed; `wrong` must stay 0.
 - In `ingots/ferrotype/src/trie.fe`, change the reference value in the `static_assert` next to `EMPTY_TRIE_ROOT`: the library stops compiling.
 - In `ingots/contracts/src/plebiscite.fe`, remove `call` from `Execute`'s `uses` clause, or call `pay` from `Vote`: neither compiles (`missing effect Call required by pay`).
+
+## 6. Where each judging criterion is answered
+
+| Criterion | Where to look |
+|---|---|
+| Technical quality | the same tests on three targets and the generated vectors (README "Results"); a million damaged proofs with no wrong value; a clean container and CI that build and test everything from scratch (section 1); the gas benchmark against the audited verifiers; the soundness table |
+| Fe-specific value | one library for the EVM, native code and WebAssembly, with `#[cfg(target)]` only in `hash.fe`; `recv` arms whose `uses` clauses show that only `Execute` can move funds; constants computed and checked at compile time (`static_assert`); the trace observer gated by an associated constant so it costs nothing when unused; CLI calldata encoded from the contracts' own `msg` types; the compiler gap reported upstream (argotorg/fe#2047). README "Fe highlight" and "Which abstractions are free" |
+| Originality | governance weighted by any ERC-20's balances at a past block, read from the token's own storage, so a token without checkpoints (USDC, CRV) needs nothing from its issuer; the same verifier answering in the contract, the CLI and the browser side by side |
+| Usefulness and insight | the gas numbers; the reproduction of the early-ending-proof bug class against Lido's and Curve's verifiers; what `@ethereumjs/trie` accepts; Amsterdam headers on Sepolia; how little proof history free public nodes keep (README "Limitations") |
+| Documentation and demo | the README, this guide, [`CLAIMS.md`](CLAIMS.md), the [live demo](https://ferrotype.vercel.app/try) and `scripts/check_live.py` |
