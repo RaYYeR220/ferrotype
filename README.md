@@ -1,5 +1,9 @@
 # Ferrotype
 
+[![CI](https://github.com/RaYYeR220/ferrotype/actions/workflows/ci.yml/badge.svg)](https://github.com/RaYYeR220/ferrotype/actions/workflows/ci.yml)
+
+**Live:** [ferrotype.vercel.app](https://ferrotype.vercel.app) · **Try it:** [ferrotype.vercel.app/try](https://ferrotype.vercel.app/try) checks one read three ways, in your browser as WebAssembly, in the contract on Sepolia and with the native CLI, and lets you damage the proof · contracts on Sepolia: [below](#live-on-sepolia).
+
 **Pitch:** Ferrotype lets a contract read any other contract's storage at a past block, trustlessly, for <!-- n:fe_gas -->178,284<!-- /n --> gas — <!-- n:vs_lido -->48%<!-- /n --> less than Lido's audited verifier and <!-- n:vs_op -->65%<!-- /n --> less than Optimism's — with one Fe codebase that runs on-chain, in a native CLI and in the browser.
 
 A DAO wants USDC holders to vote on its treasury. USDC has no checkpoints and never will: no one upgrades a $75B token for one DAO. Today the answer is an off-chain snapshot server that everyone has to trust. With Ferrotype the DAO reads each voter's balance straight out of USDC's storage at the proposal's block, proven against the block hash the chain itself remembers. The token cooperates without knowing it.
@@ -183,7 +187,7 @@ The governance run on Sepolia, transaction by transaction:
 1. a USDC proposal opens, so anyone can ask for a holder's voting power: [`0x03dd0bff…`](https://sepolia.etherscan.io/tx/0x03dd0bff1e307c8c21548f0d111b1008e92c034a2123e60e6538cb726514f99e)
 <!-- deploy:end -->
 
-Anyone can ask the deployed contracts, with no funds: `StateReader` checks any proof against any state root (mainnet proofs included), and each Plebiscite answers `votingPower(id, holder, proof)` for a balance proof at its snapshot block. [`deployments/sepolia-snapshots.json`](deployments/sepolia-snapshots.json) keeps such proofs for the three demo voters and eight USDC holders, fetched when the proposals opened (`scripts/capture_snapshots.py`). `python3 scripts/check_live.py` asks the contracts all of this with `eth_call` and prints a pass or fail per check.
+The [demo page](https://ferrotype.vercel.app/try) runs one read through the browser module and the deployed `StateReader` side by side, next to the native CLI's recorded output on the same file, and asks both Plebiscites for voting power. Anyone can ask the deployed contracts, with no funds: `StateReader` checks any proof against any state root (mainnet proofs included), and each Plebiscite answers `votingPower(id, holder, proof)` for a balance proof at its snapshot block. [`deployments/sepolia-snapshots.json`](deployments/sepolia-snapshots.json) keeps such proofs for the three demo voters and eight USDC holders, fetched when the proposals opened (`scripts/capture_snapshots.py`). `python3 scripts/check_live.py` asks the contracts all of this with `eth_call` and prints a pass or fail per check.
 
 ### From a terminal
 

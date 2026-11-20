@@ -1,5 +1,7 @@
 # Reviewing Ferrotype in five minutes
 
+**Fastest look, nothing to install:** open [ferrotype.vercel.app/try](https://ferrotype.vercel.app/try). One saved mainnet read runs in your browser through `ferrotype.wasm` and through the `StateReader` contract on Sepolia (`eth_call`), next to the native CLI's recorded output on the same file (its sha256 is checked in the page, and the file can be downloaded and run). Damage the proof with the buttons, or click any node to flip a byte, and watch every runtime refuse. Further down, both Plebiscites answer voting-power questions live. Then come back here to reproduce everything yourself.
+
 ## 1. Run everything (one command)
 
 ```sh
