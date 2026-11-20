@@ -59,7 +59,7 @@ Execute { id, data } -> bool uses (ctx, mut call, quorum_bps, mut ledger, mut lo
 fn pay(_ target: Address, _ value: Wei, _ data: Bytes) -> bool uses (ctx: Ctx, call: mut Call)
 ```
 
-Calling `pay` from `Vote` is a compile error (`missing effect Call required by pay`). Checking this claim turned up a gap: Fe 26.6 does not check the `mut` marker of a contract-level effect inside a `recv` arm, so an arm that lists `call` without `mut` can still call it mutably. Ferrotype's arms therefore never call `call` themselves; the finding is reported upstream with a minimal reproduction.
+Calling `pay` from `Vote` is a compile error (`missing effect Call required by pay`). Checking this claim turned up a gap: Fe 26.6 does not check the `mut` marker of a contract-level effect inside a `recv` arm, so an arm that lists `call` without `mut` can still call it mutably. Ferrotype's arms therefore never call `call` themselves; the finding is reported upstream with a minimal reproduction ([argotorg/fe#2047](https://github.com/argotorg/fe/issues/2047)).
 
 And the trie roots are types, so a proof cannot be checked against the wrong trie:
 

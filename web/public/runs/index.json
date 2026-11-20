@@ -1,0 +1,323 @@
+{
+ "fe": "fe 26.6.0 (5b3f96a)",
+ "cli_sha256": "923baad02cae5791e7ce55e7d2a46a66b990e04567debe779261f407c6b15292",
+ "runs": [
+  {
+   "fixture": "usdc",
+   "damage": "none",
+   "what": "the proof as the node sent it",
+   "file": "usdc--none.json",
+   "sha256": "da853c3d146732262285ae68b0b927d6a3ccd4fb8cf2f3ae5f9d4a48b2910f52",
+   "command": "ferrotype verify web/public/runs/usdc--none.json",
+   "exit": 0,
+   "accepted": true,
+   "reason": null,
+   "output": [
+    "block    26436055 0xb174920eff049cd4d165eba83fcf59fe666ed61daff2250c0ceafd429b3ea895 (header hash checked)",
+    "account  0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+    "balance  0 wei, nonce 1",
+    "slot     0x07081a045c3dbf2e63b62a407ef205e7586e2629d2e2b95ff093308ca0ff3727 = 0x8000000000000000000000000000000000000000000000000000000c3115cbc0 proven",
+    "slot     0x960b1051749987b45b5679007fff577a1c2f763ec21c15a6c5eb193075003785 = 0x0000000000000000000000000000000000000000000000000000000d67bf8b5c proven",
+    "ok"
+   ]
+  },
+  {
+   "fixture": "usdc",
+   "damage": "flip-storage",
+   "what": "one bit flipped in the last storage node",
+   "file": "usdc--flip-storage.json",
+   "sha256": "a6297f34bfd7f162397b6cd728417f7e3121905f52360bf27deaf990d524ce79",
+   "command": "ferrotype verify web/public/runs/usdc--flip-storage.json",
+   "exit": 1,
+   "accepted": false,
+   "reason": "HashMismatch",
+   "output": [
+    "block    26436055 0xb174920eff049cd4d165eba83fcf59fe666ed61daff2250c0ceafd429b3ea895 (header hash checked)",
+    "account  0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+    "balance  0 wei, nonce 1",
+    "error: storage proof for 0x07081a045c3dbf2e63b62a407ef205e7586e2629d2e2b95ff093308ca0ff3727 rejected: a node does not hash to the reference its parent holds (HashMismatch)"
+   ]
+  },
+  {
+   "fixture": "usdc",
+   "damage": "truncate-storage",
+   "what": "the last storage node removed",
+   "file": "usdc--truncate-storage.json",
+   "sha256": "bedbc1c14471fb233a783c6458907be79a6f66edf33212a6f11c4b9d25f2f804",
+   "command": "ferrotype verify web/public/runs/usdc--truncate-storage.json",
+   "exit": 1,
+   "accepted": false,
+   "reason": "MissingNode",
+   "output": [
+    "block    26436055 0xb174920eff049cd4d165eba83fcf59fe666ed61daff2250c0ceafd429b3ea895 (header hash checked)",
+    "account  0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+    "balance  0 wei, nonce 1",
+    "error: storage proof for 0x07081a045c3dbf2e63b62a407ef205e7586e2629d2e2b95ff093308ca0ff3727 rejected: the proof ends before the path does (MissingNode)"
+   ]
+  },
+  {
+   "fixture": "usdc",
+   "damage": "flip-account",
+   "what": "one bit flipped in the last account node",
+   "file": "usdc--flip-account.json",
+   "sha256": "163d0ada42fc309c9f3d248c694d335fcfc2356110452189b408f3fecdc7436e",
+   "command": "ferrotype verify web/public/runs/usdc--flip-account.json",
+   "exit": 1,
+   "accepted": false,
+   "reason": "HashMismatch",
+   "output": [
+    "block    26436055 0xb174920eff049cd4d165eba83fcf59fe666ed61daff2250c0ceafd429b3ea895 (header hash checked)",
+    "error: account proof rejected: a node does not hash to the reference its parent holds (HashMismatch)"
+   ]
+  },
+  {
+   "fixture": "usdc",
+   "damage": "truncate-account",
+   "what": "the last account node removed",
+   "file": "usdc--truncate-account.json",
+   "sha256": "e0c80500b7235f5b545ba3490542437ca4b23bfa4ceb1471e06a546a0908e249",
+   "command": "ferrotype verify web/public/runs/usdc--truncate-account.json",
+   "exit": 1,
+   "accepted": false,
+   "reason": "MissingNode",
+   "output": [
+    "block    26436055 0xb174920eff049cd4d165eba83fcf59fe666ed61daff2250c0ceafd429b3ea895 (header hash checked)",
+    "error: account proof rejected: the proof ends before the path does (MissingNode)"
+   ]
+  },
+  {
+   "fixture": "usdc",
+   "damage": "wrong-root",
+   "what": "the header's state root changed by one digit",
+   "file": "usdc--wrong-root.json",
+   "sha256": "25cd10a035743a1ed478fb769572d349cf6e5ece9bd9e2dc2fb1782d890e36d2",
+   "command": "ferrotype verify web/public/runs/usdc--wrong-root.json",
+   "exit": 1,
+   "accepted": false,
+   "reason": null,
+   "output": [
+    "error: the header hashes to 0x4e0ee396abba1ba608339e41a541a35db9e5cdbe41670c660e222847ee763993, not to the block hash 0xb174920eff049cd4d165eba83fcf59fe666ed61daff2250c0ceafd429b3ea895"
+   ]
+  },
+  {
+   "fixture": "weth",
+   "damage": "none",
+   "what": "the proof as the node sent it",
+   "file": "weth--none.json",
+   "sha256": "dd631dd893e80a159e658b9ecf588674870e9fa70d5ad1078af7f884257249dd",
+   "command": "ferrotype verify web/public/runs/weth--none.json",
+   "exit": 0,
+   "accepted": true,
+   "reason": null,
+   "output": [
+    "block    26436095 0xf76493b0f5b040f2304c8d8b61ede421baa04622d8190cd5148deb25ba8e2c1c (header hash checked)",
+    "account  0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+    "balance  2080052477283084759587535 wei, nonce 1",
+    "slot     0xdca77c2adfd7db987f63f9968b5a29d8cf2d5bee6727fb1e132443d4c5e6a94e = 0x0000000000000000000000000000000000000000000000000000000000000000 proven",
+    "ok"
+   ]
+  },
+  {
+   "fixture": "weth",
+   "damage": "flip-storage",
+   "what": "one bit flipped in the last storage node",
+   "file": "weth--flip-storage.json",
+   "sha256": "97a6f3ac33bef99c84c728d464e31b85b8328b26e4b877bcbbd8b241e49badf0",
+   "command": "ferrotype verify web/public/runs/weth--flip-storage.json",
+   "exit": 1,
+   "accepted": false,
+   "reason": "HashMismatch",
+   "output": [
+    "block    26436095 0xf76493b0f5b040f2304c8d8b61ede421baa04622d8190cd5148deb25ba8e2c1c (header hash checked)",
+    "account  0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+    "balance  2080052477283084759587535 wei, nonce 1",
+    "error: storage proof for 0xdca77c2adfd7db987f63f9968b5a29d8cf2d5bee6727fb1e132443d4c5e6a94e rejected: a node does not hash to the reference its parent holds (HashMismatch)"
+   ]
+  },
+  {
+   "fixture": "weth",
+   "damage": "truncate-storage",
+   "what": "the last storage node removed",
+   "file": "weth--truncate-storage.json",
+   "sha256": "f58fd57316987bb48a53028dd232fb1543a67c1f42980b1dd360e53290ff3748",
+   "command": "ferrotype verify web/public/runs/weth--truncate-storage.json",
+   "exit": 1,
+   "accepted": false,
+   "reason": "MissingNode",
+   "output": [
+    "block    26436095 0xf76493b0f5b040f2304c8d8b61ede421baa04622d8190cd5148deb25ba8e2c1c (header hash checked)",
+    "account  0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+    "balance  2080052477283084759587535 wei, nonce 1",
+    "error: storage proof for 0xdca77c2adfd7db987f63f9968b5a29d8cf2d5bee6727fb1e132443d4c5e6a94e rejected: the proof ends before the path does (MissingNode)"
+   ]
+  },
+  {
+   "fixture": "weth",
+   "damage": "flip-account",
+   "what": "one bit flipped in the last account node",
+   "file": "weth--flip-account.json",
+   "sha256": "cffa2bdc1998c547cef0679add41736606f087024ac2129533326a788019e400",
+   "command": "ferrotype verify web/public/runs/weth--flip-account.json",
+   "exit": 1,
+   "accepted": false,
+   "reason": "HashMismatch",
+   "output": [
+    "block    26436095 0xf76493b0f5b040f2304c8d8b61ede421baa04622d8190cd5148deb25ba8e2c1c (header hash checked)",
+    "error: account proof rejected: a node does not hash to the reference its parent holds (HashMismatch)"
+   ]
+  },
+  {
+   "fixture": "weth",
+   "damage": "truncate-account",
+   "what": "the last account node removed",
+   "file": "weth--truncate-account.json",
+   "sha256": "0f116012a4caa49386fad0fd2ba0c37e88c71dac4f852a791f20ad161fc877b0",
+   "command": "ferrotype verify web/public/runs/weth--truncate-account.json",
+   "exit": 1,
+   "accepted": false,
+   "reason": "MissingNode",
+   "output": [
+    "block    26436095 0xf76493b0f5b040f2304c8d8b61ede421baa04622d8190cd5148deb25ba8e2c1c (header hash checked)",
+    "error: account proof rejected: the proof ends before the path does (MissingNode)"
+   ]
+  },
+  {
+   "fixture": "weth",
+   "damage": "wrong-root",
+   "what": "the header's state root changed by one digit",
+   "file": "weth--wrong-root.json",
+   "sha256": "e03a4fcf6341254f46ce955265185e806b84f9315d8fb10eb722d6f775f4f0da",
+   "command": "ferrotype verify web/public/runs/weth--wrong-root.json",
+   "exit": 1,
+   "accepted": false,
+   "reason": null,
+   "output": [
+    "error: the header hashes to 0xc8b4e684c7276dc38182bc660425d2e6b6704d8a478dfbd882827433bf09fe97, not to the block hash 0xf76493b0f5b040f2304c8d8b61ede421baa04622d8190cd5148deb25ba8e2c1c"
+   ]
+  },
+  {
+   "fixture": "absent-account",
+   "damage": "none",
+   "what": "the proof as the node sent it",
+   "file": "absent-account--none.json",
+   "sha256": "62f2a6b2e08c35f66a98073e3537d7127889d66936c5617820b66671d26eaba2",
+   "command": "ferrotype verify web/public/runs/absent-account--none.json",
+   "exit": 0,
+   "accepted": true,
+   "reason": null,
+   "output": [
+    "block    26436380 0x8cd6d822ea4b7164c0fe6eaa722624915c678ea3fa5911e64e35734f1da03ca0 (header hash checked)",
+    "account  0x8f8008692992c87b301c7046f63762fe174bcea0 (does not exist)",
+    "balance  0 wei, nonce 0",
+    "slot     0x0000000000000000000000000000000000000000000000000000000000000000 = 0x0000000000000000000000000000000000000000000000000000000000000000 proven",
+    "ok"
+   ]
+  },
+  {
+   "fixture": "absent-account",
+   "damage": "flip-account",
+   "what": "one bit flipped in the last account node",
+   "file": "absent-account--flip-account.json",
+   "sha256": "6c35049ea6d31b02579cdaecae08f9b56178d2a428b4a707d2db0a069f27f8ce",
+   "command": "ferrotype verify web/public/runs/absent-account--flip-account.json",
+   "exit": 1,
+   "accepted": false,
+   "reason": "HashMismatch",
+   "output": [
+    "block    26436380 0x8cd6d822ea4b7164c0fe6eaa722624915c678ea3fa5911e64e35734f1da03ca0 (header hash checked)",
+    "error: account proof rejected: a node does not hash to the reference its parent holds (HashMismatch)"
+   ]
+  },
+  {
+   "fixture": "absent-account",
+   "damage": "truncate-account",
+   "what": "the last account node removed",
+   "file": "absent-account--truncate-account.json",
+   "sha256": "fdee7e468a6408857185f0bcfd4f5ca4b363cc8a0b9fbcb61a0f1d822aa74f4d",
+   "command": "ferrotype verify web/public/runs/absent-account--truncate-account.json",
+   "exit": 1,
+   "accepted": false,
+   "reason": "MissingNode",
+   "output": [
+    "block    26436380 0x8cd6d822ea4b7164c0fe6eaa722624915c678ea3fa5911e64e35734f1da03ca0 (header hash checked)",
+    "error: account proof rejected: the proof ends before the path does (MissingNode)"
+   ]
+  },
+  {
+   "fixture": "absent-account",
+   "damage": "wrong-root",
+   "what": "the header's state root changed by one digit",
+   "file": "absent-account--wrong-root.json",
+   "sha256": "c1aaa7d1d229b84be1e131564d889cfcff61d32892008b430b5423f3b6420b75",
+   "command": "ferrotype verify web/public/runs/absent-account--wrong-root.json",
+   "exit": 1,
+   "accepted": false,
+   "reason": null,
+   "output": [
+    "error: the header hashes to 0x1051f59096d85b8e102b6d7e4d04dd2ceb16a54cb4d2c9a66f7f75e2c1925766, not to the block hash 0x8cd6d822ea4b7164c0fe6eaa722624915c678ea3fa5911e64e35734f1da03ca0"
+   ]
+  },
+  {
+   "fixture": "eoa-empty-storage",
+   "damage": "none",
+   "what": "the proof as the node sent it",
+   "file": "eoa-empty-storage--none.json",
+   "sha256": "543782481cec09d92f3acd0acd1470605f486d63df3906eb94891e0cfe63307f",
+   "command": "ferrotype verify web/public/runs/eoa-empty-storage--none.json",
+   "exit": 0,
+   "accepted": true,
+   "reason": null,
+   "output": [
+    "block    26436095 0xf76493b0f5b040f2304c8d8b61ede421baa04622d8190cd5148deb25ba8e2c1c (header hash checked)",
+    "account  0x000000000000000000000000000000000000beef",
+    "balance  63952001345654227 wei, nonce 0",
+    "slot     0x0000000000000000000000000000000000000000000000000000000000000000 = 0x0000000000000000000000000000000000000000000000000000000000000000 proven",
+    "ok"
+   ]
+  },
+  {
+   "fixture": "eoa-empty-storage",
+   "damage": "flip-account",
+   "what": "one bit flipped in the last account node",
+   "file": "eoa-empty-storage--flip-account.json",
+   "sha256": "e75067ffcad81d5a3f8b83edb31844f75da074811b04c841fe29e80869a429e7",
+   "command": "ferrotype verify web/public/runs/eoa-empty-storage--flip-account.json",
+   "exit": 1,
+   "accepted": false,
+   "reason": "HashMismatch",
+   "output": [
+    "block    26436095 0xf76493b0f5b040f2304c8d8b61ede421baa04622d8190cd5148deb25ba8e2c1c (header hash checked)",
+    "error: account proof rejected: a node does not hash to the reference its parent holds (HashMismatch)"
+   ]
+  },
+  {
+   "fixture": "eoa-empty-storage",
+   "damage": "truncate-account",
+   "what": "the last account node removed",
+   "file": "eoa-empty-storage--truncate-account.json",
+   "sha256": "1ae061ece633e6b3e011f4dceccb2c0ef78870f302edbce8ab6306fc6d639440",
+   "command": "ferrotype verify web/public/runs/eoa-empty-storage--truncate-account.json",
+   "exit": 1,
+   "accepted": false,
+   "reason": "MissingNode",
+   "output": [
+    "block    26436095 0xf76493b0f5b040f2304c8d8b61ede421baa04622d8190cd5148deb25ba8e2c1c (header hash checked)",
+    "error: account proof rejected: the proof ends before the path does (MissingNode)"
+   ]
+  },
+  {
+   "fixture": "eoa-empty-storage",
+   "damage": "wrong-root",
+   "what": "the header's state root changed by one digit",
+   "file": "eoa-empty-storage--wrong-root.json",
+   "sha256": "3514f3c62d95e3f31fd40b259b307579b34b6fd154ef19a19fe0cd99cd9821b3",
+   "command": "ferrotype verify web/public/runs/eoa-empty-storage--wrong-root.json",
+   "exit": 1,
+   "accepted": false,
+   "reason": null,
+   "output": [
+    "error: the header hashes to 0xc8b4e684c7276dc38182bc660425d2e6b6704d8a478dfbd882827433bf09fe97, not to the block hash 0xf76493b0f5b040f2304c8d8b61ede421baa04622d8190cd5148deb25ba8e2c1c"
+   ]
+  }
+ ]
+}

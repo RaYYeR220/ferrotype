@@ -558,10 +558,10 @@ uses (out: mut Stdout)
 
 pub fn reason(_ e: ProofError) -> DynString {
     match e {
-        ProofError::Malformed => "a node is malformed",
-        ProofError::HashMismatch => "a node does not hash to the reference its parent holds",
-        ProofError::MissingNode => "the proof ends before the path does",
-        ProofError::ExtraNodes => "the proof has nodes left over",
-        ProofError::BadReference => "a child reference is neither a hash nor a small embedded node",
+        ProofError::Malformed => "a node is malformed (Malformed)",
+        ProofError::HashMismatch => "a node does not hash to the reference its parent holds (HashMismatch)",
+        ProofError::MissingNode => "the proof ends before the path does (MissingNode)",
+        ProofError::ExtraNodes => "the proof has nodes left over (ExtraNodes)",
+        ProofError::BadReference => "a child reference is neither a hash nor a small embedded node (BadReference)",
     }
 }

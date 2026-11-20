@@ -23,7 +23,7 @@ Every claim in the README and on the demo page, with how strong its evidence is 
 | The CLI handles Amsterdam headers (EIP-7928 block access list hash, EIP-7843 slot number) | VERIFIED-LIVE | the same commands with a Sepolia RPC |
 | The governance flow works end to end: proposals anchored to a real block hash, snapshot balances, refusals, treasury execution | REPRODUCIBLE | `anvil & RPC=http://127.0.0.1:8545 scripts/e2e.sh` |
 | Only `Execute` can move treasury funds: the one outgoing call is `pay`, which takes `call: mut Call`, and no other arm can reach it | REPRODUCIBLE | call `pay` from `Vote`, or remove `call` from `Execute`'s `uses` clause: `missing effect Call required by pay` |
-| Fe 26.6 does not check the `mut` marker of a contract-level effect inside a `recv` arm | REPRODUCIBLE | the minimal reproduction in the upstream report; Ferrotype's arms never call `call` themselves |
+| Fe 26.6 does not check the `mut` marker of a contract-level effect inside a `recv` arm | REPRODUCIBLE | the minimal reproduction in [argotorg/fe#2047](https://github.com/argotorg/fe/issues/2047); Ferrotype's arms never call `call` themselves |
 | The CLI's calldata matches the contracts' ABI | REPRODUCIBLE | it is encoded from the contracts' `msg` types; the end-to-end run sends it to the contracts |
 
 ## Local versus real

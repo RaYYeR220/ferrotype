@@ -30,16 +30,28 @@ DEPLOYER=$(cast wallet address --private-key "$PRIVATE_KEY")
 echo "deployer $DEPLOYER, balance $(cast balance --rpc-url "$RPC" "$DEPLOYER" --ether) ETH"
 
 record() { "$PY" scripts/record.py "$OUT" "$@"; }
+# Public RPC endpoints are load-balanced, and a node that lags one block
+# behind hands out a stale nonce. So every sender's nonce is counted here,
+# in files, because tx and deploy run inside command substitutions.
+STATE=$(mktemp -d)
+trap 'rm -rf "$STATE"' EXIT
+nonce() {
+  local a f n
+  a=$(cast wallet address --private-key "$1"); f="$STATE/$a"
+  if [ -f "$f" ]; then n=$(cat "$f"); else n=$(cast nonce --rpc-url "$RPC" --block pending "$a"); fi
+  echo $((n + 1)) > "$f"
+  echo "$n"
+}
 # Sends a transaction and prints its hash; stops the script if it fails.
 tx() {
-  local receipt
-  receipt=$(cast send --rpc-url "$RPC" --private-key "$1" "${@:2}" --json) || { echo "transaction failed: ${*:2}" >&2; exit 1; }
+  local receipt n; n=$(nonce "$1")
+  receipt=$(cast send --rpc-url "$RPC" --private-key "$1" --nonce "$n" "${@:2}" --json 2>"$STATE/err")     || { echo "transaction failed: ${*:2}" >&2; cat "$STATE/err" >&2; exit 1; }
   echo "$receipt" | py -c 'import json,sys; r=json.load(sys.stdin); assert r.get("status") in ("0x1", 1, "1"), r; print(r["transactionHash"])'
 }
 deploy() {
   local code; code="$(cat "out/$1.bin")${2:-}"
-  local receipt
-  receipt=$(cast send --rpc-url "$RPC" --private-key "$PRIVATE_KEY" --create "0x${code#0x}" --json)
+  local receipt n; n=$(nonce "$PRIVATE_KEY")
+  receipt=$(cast send --rpc-url "$RPC" --private-key "$PRIVATE_KEY" --nonce "$n" --create "0x${code#0x}" --json 2>"$STATE/err")     || { echo "deployment failed: $1" >&2; cat "$STATE/err" >&2; exit 1; }
   local addr hash
   addr=$(echo "$receipt" | py -c 'import json,sys; print(json.load(sys.stdin)["contractAddress"])')
   hash=$(echo "$receipt" | py -c 'import json,sys; print(json.load(sys.stdin)["transactionHash"])')
@@ -65,6 +77,10 @@ CAROL_PK=$(cast wallet new --json | py -c 'import json,sys; d=json.load(sys.stdi
 BOB=$(cast wallet address --private-key "$BOB_PK")
 CAROL=$(cast wallet address --private-key "$CAROL_PK")
 record voters.alice "$DEPLOYER" voters.bob "$BOB" voters.carol "$CAROL"
+# The two throwaway voter keys, kept outside the repository if asked.
+if [ -n "${VOTER_KEYS:-}" ]; then printf 'BOB_PK=%s
+CAROL_PK=%s
+' "$BOB_PK" "$CAROL_PK" > "$VOTER_KEYS"; fi
 tx "$PRIVATE_KEY" "$BOB" --value 0.004ether >/dev/null
 tx "$PRIVATE_KEY" "$CAROL" --value 0.004ether >/dev/null
 record txs.mint_alice "$(tx "$PRIVATE_KEY" "$TOKEN" "mint(address,uint256)" "$DEPLOYER" 600ether)"
