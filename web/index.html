@@ -37,7 +37,7 @@
       <a class="btn btn-primary" href="/try/">Try it on mainnet <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1 7h11M8 3l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></a>
       <a class="btn btn-ghost" href="https://github.com/RaYYeR220/ferrotype">Read the code</a>
     </div>
-    <p class="proof in" style="--d:.28s"><i></i><span><a href="#plebiscite">Contracts live on Sepolia</a> · same verifier on EVM, native and WebAssembly · <span data-n="vectors">335</span> vectors · <span data-n="fuzz_rounds">1,000,000</span> damaged proofs, <span data-n="fuzz_wrong">0</span> wrong answers</span></p>
+    <p class="proof in" style="--d:.28s"><i></i><span><a href="#plebiscite">Contracts live on Sepolia</a> · same verifier on EVM, native and WebAssembly · <span data-n="vectors">343</span> vectors · <span data-n="fuzz_rounds">1,000,000</span> damaged proofs, <span data-n="fuzz_wrong">0</span> wrong answers</span></p>
 
     <div class="in" style="--d:.34s">
       <div class="reads" role="tablist" aria-label="Pick a real mainnet read">
@@ -105,20 +105,20 @@
         <h3>In a contract</h3>
         <div class="rt-cmd">fe build</div>
         <div class="rt-cmd" style="color:var(--ink-3)">StateReader, live on <a data-addr="StateReader" href="https://sepolia.etherscan.io/address/0xc0a2c66ca8931dbe493fbd8e76526f3cd4f83497">Sepolia</a></div>
-        <div class="rt-n"><b data-n="evm_tests">374</b><span>tests</span></div>
+        <div class="rt-n"><b data-n="evm_tests">402</b><span>tests</span></div>
       </div>
       <div class="rt-c">
         <div class="rt-k"><span>CLI · native</span></div>
         <h3>On your machine</h3>
         <div class="rt-cmd">fe build --backend native</div>
         <div class="rt-cmd" style="color:var(--ink-3)">talks to any node</div>
-        <div class="rt-n"><b data-n="native_tests">357</b><span>tests</span></div>
+        <div class="rt-n"><b data-n="native_tests">373</b><span>tests</span></div>
       </div>
       <div class="rt-c here">
         <div class="rt-k"><span>browser · WebAssembly</span><span class="here-tag">this page</span></div>
         <h3>In this tab</h3>
         <div class="rt-cmd">ferrotype.wasm</div>
-        <div class="rt-n"><b data-n="wasm_checks">369</b><span>checks</span><span class="x"><span data-n="wasm_bytes">100,774</span> bytes</span></div>
+        <div class="rt-n"><b data-n="wasm_checks">377</b><span>checks</span><span class="x"><span data-n="wasm_bytes">102,909</span> bytes</span></div>
       </div>
     </div>
     <div class="code reveal">
@@ -147,14 +147,14 @@
         <table class="gas">
           <thead><tr><th scope="col"><span class="sr">Verifier</span></th><th scope="col">Read a slot</th><th scope="col">Prove a slot is empty</th></tr></thead>
           <tbody>
-            <tr><th scope="row" class="us">Ferrotype</th><td class="us"><b data-n="fe_gas">178,284</b><i data-bar="fe_gas" style="--w:29.85%"></i></td><td class="us"><b data-n="fe_absent">166,212</b><i data-bar="fe_absent" style="--w:27.83%"></i></td></tr>
+            <tr><th scope="row" class="us">Ferrotype</th><td class="us"><b data-n="fe_gas">178,338</b><i data-bar="fe_gas" style="--w:29.86%"></i></td><td class="us"><b data-n="fe_absent">166,243</b><i data-bar="fe_absent" style="--w:27.83%"></i></td></tr>
             <tr><th scope="row">Lido<span>audited</span></th><td><span data-n="lido_gas">344,979</span><i data-bar="lido_gas" style="--w:57.76%"></i></td><td><span data-n="lido_absent">314,531</span><i data-bar="lido_absent" style="--w:52.66%"></i></td></tr>
             <tr><th scope="row">Optimism<span>Bedrock, audited</span></th><td><span data-n="op_gas">514,491</span><i data-bar="op_gas" style="--w:86.14%"></i></td><td class="na" data-n="op_absent">cannot</td></tr>
             <tr><th scope="row">Curve <code>curve-xdao</code><span>patched, 2025</span></th><td><span data-n="curve_gas">597,272</span><i data-bar="curve_gas" style="--w:100%"></i></td><td><span data-n="curve_absent">546,255</span><i data-bar="curve_absent" style="--w:91.46%"></i></td></tr>
           </tbody>
         </table>
         <div class="gas-notes">
-          <div><b data-n="vs_lido">48%</b> less than Lido and <b data-n="vs_op">65%</b> less than Optimism per read. A full read transaction with packed proofs costs <b data-n="fe_tx">314,935</b> against Lido’s <b data-n="lido_tx">485,611</b>.</div>
+          <div><b data-n="vs_lido">48%</b> less than Lido and <b data-n="vs_op">65%</b> less than Optimism per read. A full read transaction with packed proofs costs <b data-n="fe_tx">314,965</b> against Lido’s <b data-n="lido_tx">485,611</b>.</div>
           <div>Among verifiers that reject a proof that stops early, Ferrotype costs <b data-n="vs_curve">70%</b> less than Curve’s patched one and <b data-n="vs_op">65%</b> less than Optimism’s.</div>
           <div>Optimism’s verifier cannot prove an empty slot or a missing account at all.</div>
           <div style="color:var(--ink-3);font-size:13.5px">Checked arithmetic stays: unchecked would save only <span data-n="unchecked">1.0%</span>. The observer hook costs <span data-n="observer">0.14%</span> (<span data-n="observer_ungated">1.5%</span> without the const gate).</div>
@@ -184,14 +184,16 @@
           <li><span>A USDC-blacklisted holder can’t vote.</span></li>
           <li><span>A second vote is refused.</span></li>
           <li><span>Someone else’s proof is refused.</span></li>
+          <li><span>A proposer needs a share of the supply at the snapshot.</span></li>
+          <li><span>Execution waits out a timelock, then expires.</span></li>
           <li><span>Only <code>Execute</code> can move treasury funds.</span></li>
         </ul>
       </div>
     </div>
     <div class="code pleb-code reveal">
 <pre><code>Vote { id, support, balance_proof } -&gt; <span class="k-ty">u256</span> <span class="k-u">uses</span> (ctx, layout_kind, balance_slot, mut ledger, mut log)
-Execute { id, data } -&gt; <span class="k-ty">bool</span> <span class="k-u">uses</span> (ctx, mut call, quorum_bps, mut ledger, mut log)</code></pre>
-      <div class="cap"><span>Each message names the effects it may use. <code>Vote</code> has no <code>call</code>, so only <code>Execute</code> can move funds.</span></div>
+Execute { id, data } -&gt; <span class="k-ty">bool</span> <span class="k-u">uses</span> (ctx, mut call, quorum_bps, timelock, grace, mut ledger, mut log)</code></pre>
+      <div class="cap"><span>Each message names the effects it may use. No other message lists <code>call</code>, so only <code>Execute</code> can move funds.</span></div>
     </div>
     <div class="deployed reveal">
       <div class="deployed-k"><b>Live on Sepolia</b><span>Built with Fe <span data-n="fe_version">26.6.0</span> and deployed as is. Their views answer anyone, no wallet needed.</span></div>
@@ -215,13 +217,13 @@ Execute { id, data } -&gt; <span class="k-ty">bool</span> <span class="k-u">uses
       <p class="lede">A verifier is judged by what it refuses. This is what Ferrotype was put through.</p>
     </div>
     <div class="ev reveal">
-      <div><b data-n="fuzz_rounds">1,000,000</b><p>damaged mainnet proofs, <em data-n="fuzz_wrong">0</em> wrong values<span class="m"><span data-n="fuzz_rejected">999,321</span> rejected · <span data-n="fuzz_true">679</span> still prove the true value</span></p></div>
-      <div><b data-n="vectors">335</b><p>vectors generated from the reference implementation</p></div>
+      <div><b data-n="fuzz_rounds">1,000,000</b><p>damaged mainnet proofs, <em data-n="fuzz_wrong">0</em> wrong values<span class="m"><span data-n="fuzz_rejected">999,321</span> rejected · <span data-n="fuzz_true">679</span> still prove the true value (<span data-n="fuzz_unchanged">679</span> of them left unchanged)</span></p></div>
+      <div><b data-n="vectors">343</b><p>vectors generated from the reference implementation</p></div>
       <div><b><span data-n="same_rounds">300</span><small>/</small><span data-n="same_rounds">300</span></b><p>fuzz rounds where the EVM and native builds reach the same verdict</p></div>
       <div><b>Amsterdam</b><p>Sepolia’s headers with their two new fields, handled</p></div>
       <div><b data-n="unsafe">0</b><p>uses of <code>unsafe</code> in the library</p></div>
     </div>
-    <div class="tests reveal"><span>Tests</span><span>EVM<b data-n="evm_tests">374</b></span><span>native<b data-n="native_tests">357</b></span><span>WebAssembly<b data-n="wasm_checks">369</b></span></div>
+    <div class="tests reveal"><span>Tests</span><span>EVM<b data-n="evm_tests">402</b></span><span>native<b data-n="native_tests">373</b></span><span>WebAssembly<b data-n="wasm_checks">377</b></span></div>
   </div>
 </section>
 </main>

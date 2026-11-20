@@ -4,7 +4,9 @@
 //! Everything the CLI trusts it checks first with the same library the
 //! contracts run: a block header must hash to the block hash, the account must
 //! be proven under the header's state root, the slot under the account's
-//! storage root. The calldata it prints is encoded from the contracts' own
+//! storage root. The block hash is the one trust anchor: it comes from the
+//! node unless `--block-hash` names one the user trusts (the contracts take it
+//! from `BLOCKHASH`). The calldata it prints is encoded from the contracts' own
 //! message types, so it cannot drift from what the contracts decode.
 
 use core::message::MsgVariant
@@ -33,14 +35,21 @@ pub use offline
 
 fn usage() -> DynString {
     "usage:
-  ferrotype read    --rpc URL --account ADDRESS --slot SLOT [--block N]
-  ferrotype balance --rpc URL --token ADDRESS --holder ADDRESS --layout solidity|vyper|flagged --slot N [--block N]
-  ferrotype propose --rpc URL --token ADDRESS --supply-slot N --target ADDRESS [--value WEI] [--data HEX] [--block N]
+  ferrotype read    --rpc URL --account ADDRESS --slot SLOT [--block N] [--block-hash HASH]
+  ferrotype balance --rpc URL --token ADDRESS --holder ADDRESS --layout solidity|vyper|flagged --slot N
+                    [--block N] [--block-hash HASH]
+  ferrotype propose --rpc URL --token ADDRESS --supply-slot N --proposer ADDRESS
+                    --layout solidity|vyper|flagged --slot N --target ADDRESS
+                    [--value WEI] [--gas N] [--data HEX] [--block N] [--block-hash HASH]
   ferrotype vote    --rpc URL --dao ADDRESS --id N --holder ADDRESS [--against]
   ferrotype verify  FILE.json
 
 Every value read from the node is proven locally before it is printed.
-Numbers are decimal or 0x hex. --block defaults to the latest block.
+Numbers are decimal or 0x hex. --block defaults to the latest block, or to
+the block --block-hash names. The proofs are only as good as the block hash
+they are proven against: without --block-hash it is the node's own.
+propose's --layout and --slot say where the token keeps balances (as for
+balance), for the proposer's balance proof; --gas defaults to 100000.
 "
 }
 
@@ -82,7 +91,7 @@ uses (args: Args, out: mut Stdout, proc: mut Spawn)
     let url = required("--rpc")?
     let account = address_arg("--account")?
     let slot = number_arg("--slot")?
-    let block = chain::block(url, block_tag())?
+    let block = anchor_block(url)?
     let proven = prove_slot(
         url,
         block.header.state_root,
@@ -113,7 +122,7 @@ uses (args: Args, out: mut Stdout, proc: mut Spawn)
     let token = address_arg("--token")?
     let holder = address_arg("--holder")?
     let layout = layout_arg()?
-    let block = chain::block(url, block_tag())?
+    let block = anchor_block(url)?
     let slot = layout.slot(holder)
     let proven = prove_slot(
         url,
@@ -142,10 +151,16 @@ uses (args: Args, out: mut Stdout, proc: mut Spawn)
     let url = required("--rpc")?
     let token = address_arg("--token")?
     let supply_slot = number_arg("--supply-slot")?
+    let proposer = address_arg("--proposer")?
+    let layout = layout_arg()?
     let target = address_arg("--target")?
     let value = match option("--value") {
         Option::Some(text) => parse_number(text, "--value")?,
         Option::None => 0,
+    }
+    let gas = match option("--gas") {
+        Option::Some(text) => parse_number(text, "--gas")?,
+        Option::None => 100000,
     }
     let data = match option("--data") {
         Option::Some(text) => match decode_hex(text) {
@@ -156,7 +171,7 @@ uses (args: Args, out: mut Stdout, proc: mut Spawn)
         },
         Option::None => Bytes::empty(),
     }
-    let block = chain::block(url, block_tag())?
+    let block = anchor_block(url)?
     let proven = prove_slot(
         url,
         block.header.state_root,
@@ -164,22 +179,46 @@ uses (args: Args, out: mut Stdout, proc: mut Spawn)
         token,
         supply_slot,
     )?
+    // The proposer's balance at the same block, under the same storage root.
+    let held = prove_storage(
+        url,
+        token,
+        layout.slot(proposer),
+        block.header.number,
+        root: proven.0.storage_root,
+    )?
+    let balance = layout.balance(held.0)
     print_block(block.header)
     print_account(token, proven.0)
     println!("supply   ", proven.1)
+    println!(
+        "proposer ",
+        hex::address(proposer),
+        " held ",
+        balance.amount,
+    )
+    if balance.flagged {
+        return Result::Err(
+            format!(
+                "the token flags the proposer, so the DAO refuses its proposal",
+            ),
+        )
+    }
     let header = Bytes::from_payload(source: block.rlp.span())
     let call = PlebisciteMsg::Propose {
         header,
         token_proof: proven.2,
         supply_proof: proven.3,
+        proposer_proof: held.1,
         target,
         value,
+        gas,
         data,
     }
     println!(
-        "\nPlebiscite.propose calldata (send it within 256 blocks of block ",
+        "\nPlebiscite.propose calldata, to be sent from the proposer while block ",
         block.header.number,
-        "):",
+        " is at most the DAO's maxSnapshotAge (config()) blocks old:",
     )
     println!(hex::bytes(calldata(call).span()))
     Result::Ok(())
@@ -195,7 +234,7 @@ uses (args: Args, out: mut Stdout, proc: mut Spawn)
     let support = !flag("--against")
 
     // What the DAO counts: the token and its layout, and the proposal's snapshot.
-    let config = eth_call_words(url, dao, calldata(PlebisciteMsg::Config {}), count: 7)?
+    let config = eth_call_words(url, dao, calldata(PlebisciteMsg::Config {}), count: 10)?
     let token = Address::new(config.read_word(0))
     let layout = match BalanceLayout::from_parts(
         kind: config.read_word(32).downcast_truncate(),
@@ -310,21 +349,45 @@ uses (proc: mut Spawn)
             return Result::Err(format!("the account proof does not verify: ", reason(e)))
         },
     }
-    let slot_nodes = storage_nodes(body, response.result)?
+    let slot_value = storage_answer(body, response.result, proven.storage_root, slot)?
+    Result::Ok(
+        (proven, slot_value.0, Bytes::from_payload(source: account_nodes.span()), slot_value.1),
+    )
+}
+
+/// Proves `slot` of `account` at block `number` against the storage root
+/// `root` already proven for the account there. Returns the slot's value and
+/// its packed proof.
+fn prove_storage<U: Display>(
+    _ url: U,
+    _ account: Address,
+    _ slot: u256,
+    _ number: u256,
+    root: StorageRoot,
+) -> Result<MemBuffer, (u256, Bytes)>
+uses (proc: mut Spawn)
+{
+    let response = chain::proof(url, account, slot, number)?
+    storage_answer(response.body.span(), response.result, root, slot)
+}
+
+// The first storage proof of an `eth_getProof` answer, checked against `root`.
+fn storage_answer(
+    _ body: MemSpan,
+    _ result: ingot::json::Value,
+    _ root: StorageRoot,
+    _ slot: u256,
+) -> Result<MemBuffer, (u256, Bytes)> {
+    let slot_nodes = storage_nodes(body, result)?
     var slot_cursor = Packed::new(start: 0, len: slot_nodes.len())
-    let value = match state::storage(
-        slot_nodes.span(),
-        nodes: mut slot_cursor,
-        root: proven.storage_root,
-        slot,
-    ) {
+    let value = match state::storage(slot_nodes.span(), nodes: mut slot_cursor, root, slot) {
         Result::Ok(v) => v,
         Result::Err(e) => {
             return Result::Err(format!("the storage proof does not verify: ", reason(e)))
         },
     }
     // A node that disagrees with its own proof is worth knowing about.
-    match chain::word_field(body, storage_entry(body, response.result)?, "value") {
+    match chain::word_field(body, storage_entry(body, result)?, "value") {
         Option::Some(claimed) => {
             if claimed != value {
                 return Result::Err(
@@ -339,14 +402,7 @@ uses (proc: mut Spawn)
         },
         Option::None => {},
     }
-    Result::Ok(
-        (
-            proven,
-            value,
-            Bytes::from_payload(source: account_nodes.span()),
-            Bytes::from_payload(source: slot_nodes.span()),
-        ),
-    )
+    Result::Ok((value, Bytes::from_payload(source: slot_nodes.span())))
 }
 
 fn storage_entry(_ body: MemSpan, _ result: ingot::json::Value) -> Result<
@@ -501,6 +557,41 @@ fn layout_arg() -> Result<MemBuffer, BalanceLayout> uses (args: Args) {
             format!("--layout must be solidity, vyper or flagged, not ", kind),
         )
     }
+}
+
+/// The block to read at: `--block` (the latest by default) or the block
+/// `--block-hash` names. With `--block-hash`, the header the node returns must
+/// hash to it, so the proofs rest on a hash the user trusts rather than on
+/// the node's word; without it, that is said once.
+fn anchor_block<U: Display>(_ url: U) -> Result<MemBuffer, chain::Block>
+uses (args: Args, out: mut Stdout, proc: mut Spawn)
+{
+    let trusted = match option("--block-hash") {
+        Option::Some(text) => parse_number(text, "--block-hash")?,
+        Option::None => {
+            let block = chain::block(url, block_tag())?
+            println!(
+                "trust    the block hash came from the node; pass --block-hash to check it against one you trust",
+            )
+            return Result::Ok(block)
+        },
+    }
+    let block = match option("--block") {
+        Option::Some(_) => chain::block(url, block_tag())?,
+        Option::None => chain::block_by_hash(url, trusted)?,
+    }
+    if block.header.hash.value != trusted {
+        return Result::Err(
+            format!(
+                "the header the node returned hashes to ",
+                hex::word(block.header.hash.value),
+                ", not to --block-hash ",
+                hex::word(trusted),
+            ),
+        )
+    }
+    println!("trust    the header hashes to --block-hash")
+    Result::Ok(block)
 }
 
 /// `--block` as a JSON-RPC block tag.

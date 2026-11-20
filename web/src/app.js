@@ -467,10 +467,18 @@ async function loadDao(key) {
   const token = "0x" + strip(cfg.words[0]).slice(24);
   const deadline = Number(W(ta, 3));
   const open = deadline * 1000 > Date.now();
-  const when = new Date(deadline * 1000).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  const at = (t) => new Date(t * 1000).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  const when = at(deadline);
+  // Execution opens `timelock` after the deadline and closes `grace` after that
+  // (a Plebiscite from before the timelock answers config() with 7 words).
+  const timed = cfg.words.length >= 10;
+  const from = deadline + (timed ? Number(W(cfg, 8)) : 0), until = timed ? from + Number(W(cfg, 9)) : Infinity;
+  const executed = W(ta, 5) === 1n;
+  const now = Date.now() / 1000;
+  const execution = executed ? "executed" : now < from ? `from ${at(from)}` : now < until ? `open until ${at(until)}` : "expired";
   const row = (k, v, cls) => h("div", null, h("dt", null, k), h("dd", { class: cls || null }, v));
   kv.textContent = "";
-  kv.append(
+  kv.append(...[
     row("votes for", [amount(d, ta.words[0]), h("small", null, d.unit)], "big"),
     row("against", [amount(d, ta.words[1]), h("small", null, d.unit)], "big"),
     row("token", h("a", { href: `${SCAN}/address/${token}` }, short(token))),
@@ -479,8 +487,12 @@ async function loadDao(key) {
     row("storage root then", `${h8(sn.words[1])}…`),
     row("supply then", [amount(d, sn.words[2]), h("small", null, d.unit)]),
     row("quorum", `${Number(W(cfg, 5)) / 100}% of supply`),
+    timed ? row("to propose", Number(W(cfg, 7)) === 0 ? "any holder" : `${Number(W(cfg, 7)) / 100}% of supply`) : null,
+    row("snapshot", `at most ${W(cfg, 6)} blocks old`),
     row("voting", `${PERIOD(Number(W(cfg, 4)))} · ${open ? "open until" : "closed"} ${when}`),
-    row("executed", W(ta, 5) === 1n ? "yes" : "no"));
+    timed ? row("timelock", `${PERIOD(Number(W(cfg, 8)))}, then ${PERIOD(Number(W(cfg, 9)))} to execute`) : null,
+    row("execution", timed && ta.words.length >= 7 ? `${execution} · call gas ${grp(W(ta, 6))}` : execution),
+  ].filter(Boolean));
   st.textContent = `config(), snapshot(${d.proposal}), tally(${d.proposal}) · eth_call · ${host(cfg.url)} · ${ms(performance.now() - t0)} · ${new Date().toLocaleTimeString()}`;
 }
 

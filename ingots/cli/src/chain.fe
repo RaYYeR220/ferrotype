@@ -17,15 +17,29 @@ pub struct Block { pub rlp: MemBuffer, pub header: Header }
 
 /// Fetches block `tag` (`latest` or a `0x` number), rebuilds the RLP header
 /// from its fields and hashes it with the library. A node that reports a
-/// block hash its own header does not hash to is refused.
+/// block hash its own header does not hash to is refused. The hash itself
+/// still comes from the node: a caller that trusts a block hash of its own
+/// compares it with `header.hash`.
 pub fn block<U: Display, T: Display>(_ url: U, _ tag: T) -> Result<MemBuffer, Block>
 uses (proc: mut Spawn)
 {
-    let response = rpc::call(
-        url,
-        "eth_getBlockByNumber",
-        format!("[\"", tag, "\",false]"),
-    )?
+    fetch_block(url, "eth_getBlockByNumber", tag)
+}
+
+/// `block`, for the block with hash `hash` (`eth_getBlockByHash`).
+pub fn block_by_hash<U: Display>(_ url: U, _ hash: u256) -> Result<MemBuffer, Block>
+uses (proc: mut Spawn)
+{
+    fetch_block(url, "eth_getBlockByHash", hex::word(hash))
+}
+
+fn fetch_block<U: Display, M: Display, T: Display>(_ url: U, _ method: M, _ tag: T) -> Result<
+    MemBuffer,
+    Block,
+>
+uses (proc: mut Spawn)
+{
+    let response = rpc::call(url, method, format!("[\"", tag, "\",false]"))?
     let body = response.body.span()
     if response.result.is_null() {
         return Result::Err(format!("the node does not know block ", tag))

@@ -6,10 +6,12 @@
 Checks, against deployments/sepolia.json:
   - StateReader proves each saved mainnet read (fixtures/mainnet) against its
     state root, and refuses the same proof with a node missing or a bit flipped;
-  - each Plebiscite returns every saved voter's snapshot balance as voting
-    power (deployments/sepolia-snapshots.json), and refuses one voter's proof
-    sent for another;
-  - the demo proposal's tally: 700 for, 300 against.
+  - each Plebiscite answers config() with its ten settings (the timelocked
+    version), returns every saved voter's snapshot balance as voting power
+    (deployments/sepolia-snapshots.json), and refuses one voter's proof sent
+    for another;
+  - the demo proposal's tally: 700 for, 300 against, executed (or, before
+    that, when it can be).
 Prints one line per check and exits non-zero if any fails. Standard library only.
 """
 import json
@@ -22,9 +24,14 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 # eth_call at the latest block works on any node; the next one is a fallback.
 RPCS = sys.argv[1:] or ["https://ethereum-sepolia-rpc.publicnode.com", "https://sepolia.gateway.tenderly.co"]
 REASONS = {1: "Malformed", 2: "HashMismatch", 3: "MissingNode", 4: "ExtraNodes", 5: "BadReference"}
+# Refused(reason) codes 1 to 19, ingots/contracts/src/ballot.fe
+REFUSED = ["UnknownProposal", "VotingClosed", "VotingOpen", "AlreadyVoted", "NoWeight", "FlaggedHolder", "NotPassed",
+           "AlreadyExecuted", "WrongCalldata", "UnknownBlock", "BadHeader", "CallFailed", "BadConfig", "NoSupply",
+           "BelowThreshold", "WeightAboveSupply", "Timelocked", "Expired", "InsufficientGas"]
 STORAGE_AT_PACKED = "fe3242a8"  # storageAtPacked(bytes32,address,bytes32,bytes,bytes)
 VOTING_POWER = "08e038f3"  # votingPower(uint256,address,bytes)
 TALLY = "ed8b6b31"  # tally(uint256)
+CONFIG = "79502c55"  # config()
 
 
 def word(n):
@@ -69,7 +76,8 @@ def call(to, data):
     if data[:10] == "0xf7f9ec62":
         return "revert", f"InvalidProof({REASONS.get(int(data[10:74], 16), '?')})"
     if data[:10] == "0xbd5adfec":
-        return "revert", f"Refused({int(data[10:74], 16)})"
+        code = int(data[10:74], 16)
+        return "revert", f"Refused({REFUSED[code - 1] if 0 < code <= len(REFUSED) else code})"
     return "revert", reply["error"].get("message", "?")
 
 
@@ -105,8 +113,22 @@ for name in ("usdc", "weth", "crv", "absent-account", "eoa-empty-storage"):
     check(f"{name}, last account node missing", ask(p["accountProof"][:-1], sp["proof"]), ("revert", "InvalidProof(MissingNode)"))
     check(f"{name}, one bit flipped in the last account node", ask(p["accountProof"][:-1] + [flip(p["accountProof"][-1])], sp["proof"]), ("revert", "InvalidProof(HashMismatch)"))
 
+
+def words(hexdata):
+    body = hexdata[2:]
+    return [int(body[i:i + 64], 16) for i in range(0, len(body), 64)]
+
+
 for key, dao in snaps["daos"].items():
     print(f"\nPlebiscite ({key}) {dao['dao']}, proposal {dao['proposal']}, snapshot block {dao['block']}")
+    status, out = call(dao["dao"], CONFIG)
+    cfg = words(out) if status == "ok" else []
+    failed += len(cfg) != 10
+    if len(cfg) == 10:
+        print(f"pass  config(): {cfg[5] / 100:g}% quorum, {cfg[7] / 100:g}% of the supply to propose, snapshots at most "
+              f"{cfg[6]} blocks old, {cfg[4]} s to vote, then a {cfg[8]} s timelock and {cfg[9]} s to execute")
+    else:
+        print(f"FAIL  config(): {len(cfg)} words, not the ten of the timelocked Plebiscite ({status})")
     for v in dao["proofs"]:
         got = call(dao["dao"], VOTING_POWER + encode(dao["proposal"], v["holder"], packed(v["proof"])))
         check(f"voting power of {v['holder']}", got, ("ok", "0x" + word(v["value"]) if dao["layout"] != "flagged" else "0x" + word(int(v["value"], 16) & ((1 << 255) - 1))))
@@ -118,9 +140,14 @@ for key, dao in snaps["daos"].items():
 
 demo = dep["contracts"]["PlebisciteDemo"]
 status, out = call(demo, TALLY + word(1))
-votes_for, votes_against = int(out[2:66], 16) // 10**18, int(out[66:130], 16) // 10**18
-executed = int(out[322:386], 16) == 1
+tally = words(out)
+votes_for, votes_against, deadline, executed = tally[0] // 10**18, tally[1] // 10**18, tally[3], tally[5] == 1
+_, out = call(demo, CONFIG)
+cfg = words(out)
 print(f"\nDemo proposal 1: {votes_for} for, {votes_against} against, executed: {'yes' if executed else 'no'}")
+if not executed and len(cfg) == 10:
+    opens = deadline + cfg[8]
+    print(f"  it can be executed from unix time {opens} until {opens + cfg[9]} (deadline + timelock, then the grace period)")
 failed += (votes_for, votes_against) != (700, 300) or not executed
 print("\nall checks passed" if not failed else f"\n{failed} check(s) failed")
 sys.exit(1 if failed else 0)

@@ -12,18 +12,48 @@ use ferrotype::state::StorageRoot
 #[error]
 pub struct Refused { pub reason: u8 }
 
+/// The proposal id is 0 or was never opened.
 pub const UNKNOWN_PROPOSAL: u8 = 1
+/// A vote arrived at or after the proposal's deadline.
 pub const VOTING_CLOSED: u8 = 2
+/// `Execute` before the proposal's deadline.
 pub const VOTING_OPEN: u8 = 3
+/// This address has already voted on this proposal.
 pub const ALREADY_VOTED: u8 = 4
+/// The voter held none of the token at the snapshot block.
 pub const NO_WEIGHT: u8 = 5
+/// The token flags this holder (USDC's blacklist bit) at the snapshot block.
 pub const FLAGGED_HOLDER: u8 = 6
+/// Voting is over and the proposal did not pass: no more weight for than
+/// against, or the weight for is short of the quorum.
 pub const NOT_PASSED: u8 = 7
+/// The proposal has already been executed.
 pub const ALREADY_EXECUTED: u8 = 8
+/// `Execute` was given other calldata than the proposal was opened with.
 pub const WRONG_CALLDATA: u8 = 9
+/// The header's block is not one of the last `max_snapshot_age` blocks, or
+/// `BLOCKHASH` does not return the header's hash for it.
 pub const UNKNOWN_BLOCK: u8 = 10
+/// The header does not decode as a block header.
 pub const BAD_HEADER: u8 = 11
+/// The proposal's call reverted.
 pub const CALL_FAILED: u8 = 12
+/// A constructor argument is out of range (see `Plebiscite`'s `init`).
+pub const BAD_CONFIG: u8 = 13
+/// The token's total supply at the snapshot block is zero.
+pub const NO_SUPPLY: u8 = 14
+/// The proposer's balance at the snapshot block is below the proposal
+/// threshold.
+pub const BELOW_THRESHOLD: u8 = 15
+/// A vote's weight is larger than the token's total supply at the snapshot.
+pub const WEIGHT_ABOVE_SUPPLY: u8 = 16
+/// Voting is over, but the timelock after it has not passed yet.
+pub const TIMELOCKED: u8 = 17
+/// The grace period after the timelock is over: the proposal can no longer
+/// be executed.
+pub const EXPIRED: u8 = 18
+/// Not enough gas is left to forward the proposal's gas to its call.
+pub const INSUFFICIENT_GAS: u8 = 19
 
 /// Reverts with `Refused { reason }`.
 pub fn refuse(_ reason: u8) -> ! {
@@ -42,6 +72,8 @@ pub struct Proposal {
     pub value: Wei,
     /// Keccak-256 of the calldata; the calldata itself is passed again to `execute`.
     pub data_hash: u256,
+    /// The gas the call is made with, exactly.
+    pub gas: u256,
     pub snapshot_block: u256,
     pub storage_root: u256,
     pub supply: u256,
@@ -60,12 +92,21 @@ pub struct Ledger {
     pub count: u256,
 }
 
+/// `ceil(supply * bps / 10000)`, for `bps` at most 10000, computed without
+/// a product that can exceed 2^256: the share of the whole ten-thousandths,
+/// then of the remainder.
+pub fn share(supply: u256, bps: u256) -> u256 {
+    let rest = (supply % 10000) * bps
+    (supply / 10000) * bps + rest / 10000 + if rest % 10000 == 0 { 0 } else { 1 }
+}
+
 /// Opens a proposal counting votes at `snapshot`, until `deadline`.
 pub fn open(
     proposer: Address,
     target: Address,
     value: Wei,
     data_hash: u256,
+    gas: u256,
     snapshot: Snapshot,
     deadline: Timestamp,
 ) -> u256
@@ -82,6 +123,7 @@ uses (ledger: mut Ledger)
                 target,
                 value,
                 data_hash,
+                gas,
                 snapshot_block: snapshot.block,
                 storage_root: snapshot.storage_root.value,
                 supply: snapshot.supply,
@@ -122,6 +164,11 @@ uses (ledger: mut Ledger)
     if weight == 0 {
         refuse(NO_WEIGHT)
     }
+    // No holder can hold more than the whole supply; a token whose storage
+    // says otherwise is not counted.
+    if weight > proposal.supply {
+        refuse(WEIGHT_ABOVE_SUPPLY)
+    }
     ledger.ballots.set(key: key, value: true)
     if support {
         proposal.votes_for += weight
@@ -136,12 +183,21 @@ uses (ledger: mut Ledger)
 pub fn passed(_ proposal: Proposal, now: Timestamp, quorum_bps: u256) -> bool {
     now >= proposal.deadline
         && proposal.votes_for > proposal.votes_against
-        && proposal.votes_for * 10000 >= proposal.supply * quorum_bps
+        && proposal.votes_for >= share(supply: proposal.supply, bps: quorum_bps)
 }
 
-/// Marks `id` executed if it passed and `data` is the calldata it was opened
-/// with; returns the proposal to execute.
-pub fn settle(_ id: u256, data_hash: u256, now: Timestamp, quorum_bps: u256) -> Proposal
+/// Marks `id` executed if it can be executed at `now` and `data` is the
+/// calldata it was opened with; returns the proposal to execute. A proposal
+/// can be executed once, from `timelock` after its deadline until `grace`
+/// after that, and only if it passed.
+pub fn settle(
+    _ id: u256,
+    data_hash: u256,
+    now: Timestamp,
+    quorum_bps: u256,
+    timelock: Duration,
+    grace: Duration,
+) -> Proposal
 uses (ledger: mut Ledger)
 {
     var proposal = get(id)
@@ -150,6 +206,14 @@ uses (ledger: mut Ledger)
     }
     if now < proposal.deadline {
         refuse(VOTING_OPEN)
+    }
+    // Measured from the deadline, so no sum of durations can overflow.
+    let since = now - proposal.deadline
+    if since < timelock {
+        refuse(TIMELOCKED)
+    }
+    if since - timelock >= grace {
+        refuse(EXPIRED)
     }
     if !passed(proposal, now, quorum_bps) {
         refuse(NOT_PASSED)

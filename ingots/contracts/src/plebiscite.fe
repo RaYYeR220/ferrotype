@@ -4,19 +4,20 @@
 //! proofs, so the token needs no checkpoints and no one runs a snapshot
 //! server.
 //!
-//! Opening a proposal anchors it to a block the chain still remembers: the
-//! header must hash to `BLOCKHASH` (or the EIP-2935 history), its state root
-//! proves the token's account, and the account's storage root is kept. From
-//! then on a vote needs only one storage proof: the voter's balance slot.
+//! Opening a proposal anchors it to a fresh block: the header must be at most
+//! `max_snapshot_age` blocks old and hash to what `BLOCKHASH` returns for it,
+//! its state root proves the token's account, and the account's storage root
+//! is kept. The proposer proves a balance of at least the proposal threshold
+//! at that block. From then on a vote needs only one storage proof: the
+//! voter's balance slot. A proposal that passes can be executed once the
+//! timelock after the vote has passed, until a grace period after that ends.
 //!
 //! What each handler may touch is in its `uses` clause: a handler that does
-//! not list an effect or a field cannot reach it. Only `Propose` and `Execute`
-//! list `call`, and each passes it to one free function whose own `uses`
-//! clause the compiler checks: `history::block_hash` takes it read-only, which
-//! allows nothing but `STATICCALL`; `pay`, reached only from `Execute`, takes
-//! it mutably and is the treasury's one outgoing call. (Fe 26.6 does not yet
-//! check the `mut` marker on a contract-level effect inside a `recv` arm, so
-//! the arms do not call `call` themselves.)
+//! not list an effect or a field cannot reach it. Only `Execute` lists
+//! `call`, and it passes it to one free function, `pay`, whose own `uses`
+//! clause takes it mutably: the treasury's one outgoing call. (Fe 26.6 does
+//! not yet check the `mut` marker on a contract-level effect inside a `recv`
+//! arm, so the arm does not call `call` itself.)
 
 use std::abi::Bytes
 use std::evm::{keccak256, wei}
@@ -25,19 +26,32 @@ use ferrotype::slots::BalanceLayout
 use ferrotype::state::{self, StorageRoot}
 use ingot::ballot::{self, Ledger, Proposal, Snapshot, refuse}
 use ingot::errors::reject
-use ingot::history
+
+/// The oldest snapshot any Plebiscite accepts, in blocks. `BLOCKHASH`
+/// answers for 256; a proposal is meant to be opened at once.
+pub const MAX_SNAPSHOT_AGE: u256 = 64
+
+/// Gas kept back, beyond EIP-150's 1/64, for the code that runs after the
+/// proposal's call: the `Executed` event and the return.
+pub const AFTER_CALL_GAS: u256 = 10000
 
 pub msg PlebisciteMsg {
     /// Opens a proposal counted at the block `header` describes. The proofs
-    /// are the token's account proof and its total-supply slot proof at that
-    /// block, packed (nodes end to end). Returns the proposal id.
-    #[selector = sol("propose(bytes,bytes,bytes,address,uint256,bytes)")]
+    /// are the token's account proof, its total-supply slot proof and the
+    /// caller's balance slot proof at that block, packed (nodes end to end).
+    /// If the proposal passes, `execute` calls `target` with `value` and
+    /// `data`, forwarding exactly `gas`. Returns the proposal id.
+    #[selector = sol(
+        "propose(bytes,bytes,bytes,bytes,address,uint256,uint256,bytes)",
+    )]
     Propose {
         header: Bytes,
         token_proof: Bytes,
         supply_proof: Bytes,
+        proposer_proof: Bytes,
         target: Address,
         value: u256,
+        gas: u256,
         data: Bytes,
     } -> u256,
 
@@ -51,7 +65,8 @@ pub msg PlebisciteMsg {
     #[selector = sol("votingPower(uint256,address,bytes)")]
     VotingPower { id: u256, holder: Address, balance_proof: Bytes } -> u256,
 
-    /// Makes the proposal's call from the treasury once it has passed.
+    /// Makes the proposal's call from the treasury once it has passed and
+    /// its timelock is over, before its grace period ends.
     #[selector = sol("execute(uint256,bytes)")]
     Execute { id: u256, data: Bytes } -> bool,
 
@@ -70,13 +85,14 @@ pub msg PlebisciteMsg {
     #[selector = sol("snapshot(uint256)")]
     SnapshotOf { id: u256 } -> (u256, u256, u256),
 
-    /// `(votesFor, votesAgainst, supply, deadline, snapshotBlock, executed)`.
+    /// `(votesFor, votesAgainst, supply, deadline, snapshotBlock, executed, gas)`.
     #[selector = sol("tally(uint256)")]
-    Tally { id: u256 } -> (u256, u256, u256, u256, u256, bool),
+    Tally { id: u256 } -> (u256, u256, u256, u256, u256, bool, u256),
 
-    /// `(token, layoutKind, balanceSlot, supplySlot, votingPeriod, quorumBps, maxSnapshotAge)`.
+    /// `(token, layoutKind, balanceSlot, supplySlot, votingPeriod, quorumBps,
+    /// maxSnapshotAge, proposalThresholdBps, timelock, grace)`.
     #[selector = sol("config()")]
-    Config -> (Address, u8, u256, u256, u256, u256, u256),
+    Config -> (Address, u8, u256, u256, u256, u256, u256, u256, u256, u256),
 }
 
 #[event]
@@ -90,6 +106,7 @@ pub struct Proposed {
     pub deadline: Timestamp,
     pub target: Address,
     pub value: Wei,
+    pub gas: u256,
 }
 
 #[event]
@@ -118,6 +135,9 @@ pub contract Plebiscite uses (ctx: Ctx, call: mut Call, log: mut Log) {
     voting_period: Duration,
     quorum_bps: u256,
     max_snapshot_age: u256,
+    proposal_threshold_bps: u256,
+    timelock: Duration,
+    grace: Duration,
     mut ledger: Ledger,
 
     init(
@@ -128,6 +148,9 @@ pub contract Plebiscite uses (ctx: Ctx, call: mut Call, log: mut Log) {
         period: Duration,
         quorum: u256,
         max_age: u256,
+        threshold: u256,
+        lock: Duration,
+        grace_period: Duration,
     )
     uses (
         mut token,
@@ -137,17 +160,20 @@ pub contract Plebiscite uses (ctx: Ctx, call: mut Call, log: mut Log) {
         mut voting_period,
         mut quorum_bps,
         mut max_snapshot_age,
+        mut proposal_threshold_bps,
+        mut timelock,
+        mut grace,
     )
     {
-        assert!(
-            BalanceLayout::from_parts(kind: layout, slot: balances_at).is_some(),
-            "unknown balance layout",
-        )
-        assert!(quorum <= 10000, "quorum above 100%")
-        assert!(
-            max_age >= 1 && max_age <= history::HISTORY_WINDOW,
-            "snapshot age outside the history window",
-        )
+        if BalanceLayout::from_parts(kind: layout, slot: balances_at).is_none()
+            || quorum < 1
+            || quorum > 10000
+            || threshold > 10000
+            || max_age < 1
+            || max_age > MAX_SNAPSHOT_AGE
+            || grace_period == Duration::zero() {
+            refuse(ballot::BAD_CONFIG)
+        }
         token = token_address
         layout_kind = layout
         balance_slot = balances_at
@@ -155,11 +181,34 @@ pub contract Plebiscite uses (ctx: Ctx, call: mut Call, log: mut Log) {
         voting_period = period
         quorum_bps = quorum
         max_snapshot_age = max_age
+        proposal_threshold_bps = threshold
+        timelock = lock
+        grace = grace_period
     }
 
     recv PlebisciteMsg {
-        Propose { header, token_proof, supply_proof, target, value, data } -> u256
-        uses (ctx, call, token, supply_slot, voting_period, max_snapshot_age, mut ledger, mut log)
+        Propose {
+            header,
+            token_proof,
+            supply_proof,
+            proposer_proof,
+            target,
+            value,
+            gas,
+            data,
+        } -> u256
+        uses (
+            ctx,
+            token,
+            layout_kind,
+            balance_slot,
+            supply_slot,
+            voting_period,
+            max_snapshot_age,
+            proposal_threshold_bps,
+            mut ledger,
+            mut log,
+        )
         {
             let snapshot = anchor(
                 header,
@@ -169,25 +218,36 @@ pub contract Plebiscite uses (ctx: Ctx, call: mut Call, log: mut Log) {
                 supply_slot,
                 max_age: max_snapshot_age,
             )
+            let proposer = ctx.caller()
+            admit(
+                snapshot,
+                proposer,
+                proof: proposer_proof,
+                kind: layout_kind,
+                slot: balance_slot,
+                threshold_bps: proposal_threshold_bps,
+            )
             let deadline = ctx.timestamp() + voting_period
             let amount = wei(value)
             let id = ballot::open(
-                proposer: ctx.caller(),
+                proposer,
                 target,
                 value: amount,
                 data_hash: keccak256(data.span()),
+                gas,
                 snapshot,
                 deadline,
             )
             log.emit(
                 Proposed {
                     id,
-                    proposer: ctx.caller(),
+                    proposer,
                     snapshot_block: snapshot.block,
                     supply: snapshot.supply,
                     deadline,
                     target,
                     value: amount,
+                    gas,
                 },
             )
             id
@@ -223,17 +283,25 @@ pub contract Plebiscite uses (ctx: Ctx, call: mut Call, log: mut Log) {
             )
         }
 
-        Execute { id, data } -> bool uses (ctx, mut call, quorum_bps, mut ledger, mut log) {
+        Execute { id, data } -> bool uses (
+            ctx,
+            mut call,
+            quorum_bps,
+            timelock,
+            grace,
+            mut ledger,
+            mut log,
+        ) {
             // Marked executed before the call, so the call cannot re-enter it.
             let proposal = ballot::settle(
                 id,
                 data_hash: keccak256(data.span()),
                 now: ctx.timestamp(),
                 quorum_bps,
+                timelock,
+                grace,
             )
-            if !pay(proposal.target, proposal.value, data) {
-                refuse(ballot::CALL_FAILED)
-            }
+            pay(proposal.target, proposal.value, data, gas: proposal.gas)
             log.emit(
                 Executed { id, target: proposal.target, value: proposal.value },
             )
@@ -258,7 +326,7 @@ pub contract Plebiscite uses (ctx: Ctx, call: mut Call, log: mut Log) {
             (p.snapshot_block, p.storage_root, p.supply)
         }
 
-        Tally { id } -> (u256, u256, u256, u256, u256, bool)
+        Tally { id } -> (u256, u256, u256, u256, u256, bool, u256)
         uses (ledger)
         {
             let p = ballot::get(id)
@@ -269,10 +337,11 @@ pub contract Plebiscite uses (ctx: Ctx, call: mut Call, log: mut Log) {
                 p.deadline.as_seconds(),
                 p.snapshot_block,
                 p.executed,
+                p.gas,
             )
         }
 
-        Config -> (Address, u8, u256, u256, u256, u256, u256)
+        Config -> (Address, u8, u256, u256, u256, u256, u256, u256, u256, u256)
         uses (
             token,
             layout_kind,
@@ -281,6 +350,9 @@ pub contract Plebiscite uses (ctx: Ctx, call: mut Call, log: mut Log) {
             voting_period,
             quorum_bps,
             max_snapshot_age,
+            proposal_threshold_bps,
+            timelock,
+            grace,
         )
         {
             (
@@ -291,28 +363,46 @@ pub contract Plebiscite uses (ctx: Ctx, call: mut Call, log: mut Log) {
                 voting_period.as_seconds(),
                 quorum_bps,
                 max_snapshot_age,
+                proposal_threshold_bps,
+                timelock.as_seconds(),
+                grace.as_seconds(),
             )
         }
     }
 }
 
-/// The treasury's one outgoing call: `data` to `target` with `value` attached.
-/// Every call the contract makes goes through a free function like this one
-/// or `history::block_hash`, whose `uses` clause the compiler checks: this one
-/// takes `call` mutably, `block_hash` takes it read-only.
-fn pay(_ target: Address, _ value: Wei, _ data: Bytes) -> bool
-uses (ctx: Ctx, call: mut Call)
+/// The treasury's one outgoing call: `data` to `target` with `value`
+/// attached, forwarding exactly `gas`. The only free function that takes
+/// `call`, and it takes it mutably; the compiler checks that only a handler
+/// listing `call` (`Execute`) can reach it.
+///
+/// `call_with_min_gas` checks before calling that enough gas is left to
+/// forward all of `gas` under EIP-150's 63/64 rule and still keep
+/// `AFTER_CALL_GAS`, so whoever sends `execute` cannot starve the call; and
+/// it copies none of the return data, so the target cannot make the
+/// treasury pay to copy it.
+pub fn pay(_ target: Address, _ value: Wei, _ data: Bytes, gas: u256)
+uses (call: mut Call)
 {
-    call.try_call_raw(
+    match call.call_with_min_gas(
         addr: target,
-        gas: ctx.gas() - 5000,
+        minimum: gas,
+        reserved: AFTER_CALL_GAS,
         value,
         args: data.span(),
-    ).success()
+    ) {
+        Result::Ok(outcome) => {
+            if !outcome.success() {
+                refuse(ballot::CALL_FAILED)
+            }
+        },
+        Result::Err(_) => refuse(ballot::INSUFFICIENT_GAS),
+    }
 }
 
 /// Proves the token's storage root and total supply at the block `header`
-/// describes, after checking the chain remembers that block by this hash.
+/// describes, after checking that the block is at most `max_age` blocks old
+/// and that `BLOCKHASH` returns this header's hash for it.
 fn anchor(
     _ header: Bytes,
     _ token_proof: Bytes,
@@ -321,7 +411,7 @@ fn anchor(
     _ supply_slot: u256,
     max_age: u256,
 ) -> Snapshot
-uses (ctx: Ctx, call: Call)
+uses (ctx: Ctx)
 {
     let h = match state::header(header.span(), at: 0, len: header.len()) {
         Option::Some(h) => h,
@@ -331,13 +421,11 @@ uses (ctx: Ctx, call: Call)
     if h.number >= current || current - h.number > max_age {
         refuse(ballot::UNKNOWN_BLOCK)
     }
-    match history::block_hash(h.number) {
-        Option::Some(hash) => {
-            if hash != h.hash.value {
-                refuse(ballot::UNKNOWN_BLOCK)
-            }
-        },
-        Option::None => refuse(ballot::UNKNOWN_BLOCK),
+    // `max_age` is at most 64, well inside the 256 blocks `BLOCKHASH`
+    // answers for; it returns 0 for any block outside them.
+    let hash = ctx.blockhash(h.number)
+    if hash == 0 || hash != h.hash.value {
+        refuse(ballot::UNKNOWN_BLOCK)
     }
     var account_nodes = Packed::new(start: 0, len: token_proof.len())
     let account = match state::account(
@@ -362,6 +450,28 @@ uses (ctx: Ctx, call: Call)
     Snapshot { block: h.number, storage_root: account.storage_root, supply }
 }
 
+/// Lets `proposer` open a proposal at `snapshot`: the supply must not be
+/// zero, and the proposer's balance at the snapshot block, proven by
+/// `proof` under the token's layout, must be at least `threshold_bps` basis
+/// points of it, rounded up. A threshold of 0 lets any holder the token does
+/// not flag propose, with any balance.
+pub fn admit(
+    _ snapshot: Snapshot,
+    proposer: Address,
+    proof: Bytes,
+    kind: u8,
+    slot: u256,
+    threshold_bps: u256,
+) {
+    if snapshot.supply == 0 {
+        refuse(ballot::NO_SUPPLY)
+    }
+    let balance = balance_at(snapshot.storage_root, holder: proposer, proof, kind, slot)
+    if balance < ballot::share(supply: snapshot.supply, bps: threshold_bps) {
+        refuse(ballot::BELOW_THRESHOLD)
+    }
+}
+
 /// The balance `holder` held at the proposal's block, under the token's
 /// layout. A holder the token flags (USDC's blacklist bit) cannot vote.
 pub fn weight_of(
@@ -371,12 +481,24 @@ pub fn weight_of(
     kind: u8,
     slot: u256,
 ) -> u256 {
+    balance_at(
+        StorageRoot { value: proposal.storage_root },
+        holder,
+        proof,
+        kind,
+        slot,
+    )
+}
+
+/// The balance `holder` held in the token storage `root`, proven by
+/// `proof`; refuses a holder the token flags.
+fn balance_at(_ root: StorageRoot, holder: Address, proof: Bytes, kind: u8, slot: u256) -> u256 {
     let layout = BalanceLayout::from_parts(kind, slot).unwrap()
     var nodes = Packed::new(start: 0, len: proof.len())
     let word = match state::storage(
         proof.span(),
         nodes: mut nodes,
-        root: StorageRoot { value: proposal.storage_root },
+        root,
         slot: layout.slot(holder),
     ) {
         Result::Ok(word) => word,

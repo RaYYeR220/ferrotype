@@ -135,20 +135,25 @@ export function snapshotCall(id) {
   return "0x8f1dd809" + strip(word(id));
 }
 
-/** Plebiscite.tally(uint256 id) → (votesFor, votesAgainst, supply, deadline, snapshotBlock, executed) */
+/** Plebiscite.tally(uint256 id) → (votesFor, votesAgainst, supply, deadline, snapshotBlock, executed, gas) */
 export function tallyCall(id) {
   return "0xed8b6b31" + strip(word(id));
 }
 
-/** Plebiscite.config() → (token, layoutKind, balanceSlot, supplySlot, votingPeriod, quorumBps, maxSnapshotAge) */
+/**
+ * Plebiscite.config() → (token, layoutKind, balanceSlot, supplySlot, votingPeriod, quorumBps,
+ * maxSnapshotAge, proposalThresholdBps, timelock, grace)
+ */
 export const CONFIG_CALL = "0x79502c55";
 
 const ERRORS = {
   f7f9ec62: ["InvalidProof", ["Malformed", "HashMismatch", "MissingNode", "ExtraNodes", "BadReference"]],
   bd5adfec: [
     "Refused",
+    // Codes 1 to 19 of ingots/contracts/src/ballot.fe, in order.
     ["UnknownProposal", "VotingClosed", "VotingOpen", "AlreadyVoted", "NoWeight", "FlaggedHolder", "NotPassed",
-      "AlreadyExecuted", "WrongCalldata", "UnknownBlock", "BadHeader", "CallFailed"],
+      "AlreadyExecuted", "WrongCalldata", "UnknownBlock", "BadHeader", "CallFailed", "BadConfig", "NoSupply",
+      "BelowThreshold", "WeightAboveSupply", "Timelocked", "Expired", "InsufficientGas"],
   ],
 };
 

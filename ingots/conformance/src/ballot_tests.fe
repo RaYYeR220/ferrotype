@@ -1,20 +1,31 @@
 //! The ballot rules, driven through a contract that wires the same `Ledger`
 //! the Plebiscite uses, with the clock passed in so deadlines can be tested.
 //! The snapshot is USDC's storage root at a real mainnet block; the weights
-//! come from real storage proofs.
+//! come from real storage proofs. Every refusal is checked for its exact
+//! `Refused(reason)` (or `InvalidProof(reason)`) revert data.
 #![cfg(target = "evm")]
 
 use core::text::decode_hex
 use std::abi::Bytes
+use std::evm::{CallOutcome, is_error, seconds}
 
-use contracts::ballot::{self, Ledger, Snapshot}
-use contracts::plebiscite::weight_of
+use contracts::errors::InvalidProof
+use contracts::ballot::{self, Ledger, Proposal, Refused, Snapshot}
+use contracts::plebiscite::{Plebiscite, admit, pay, weight_of}
 use ferrotype::state::StorageRoot
 use ingot::mainnet_usdc
 
 /// USDC (FiatToken v2.2): balances and the blacklist bit at slot 9.
 const LAYOUT: u8 = 2
 const BALANCE_SLOT: u256 = 9
+
+/// 0x...dEaD held 57,575.181148 USDC at the snapshot block.
+const DEAD: u256 = 0x000000000000000000000000000000000000dEaD
+const DEAD_BALANCE: u256 = 57575181148
+/// The holder USDC blacklisted.
+const FLAGGED: u256 = 0x28c6c06298d514db089934071355e5743bf21d60
+
+const MAX: u256 = 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 
 msg HarnessMsg {
     #[selector = 0x01]
@@ -24,12 +35,23 @@ msg HarnessMsg {
     #[selector = 0x03]
     Weight { id: u256, holder: Address, proof: Bytes } -> u256,
     #[selector = 0x04]
-    Settle { id: u256, data_hash: u256, now: u256, quorum: u256 } -> bool,
+    Settle {
+        id: u256,
+        data_hash: u256,
+        now: u256,
+        quorum: u256,
+        timelock: u256,
+        grace: u256,
+    } -> bool,
     #[selector = 0x05]
     Votes { id: u256 } -> (u256, u256),
+    #[selector = 0x06]
+    Admit { supply: u256, proposer: Address, proof: Bytes, threshold: u256 } -> bool,
+    #[selector = 0x07]
+    Pay { target: Address, gas: u256, data: Bytes } -> bool,
 }
 
-pub contract LedgerHarness {
+pub contract LedgerHarness uses (call: mut Call) {
     mut ledger: Ledger,
 
     recv HarnessMsg {
@@ -44,6 +66,7 @@ pub contract LedgerHarness {
                 target: Address::new(0xbeef),
                 value: Wei::zero(),
                 data_hash,
+                gas: 100000,
                 snapshot,
                 deadline: Timestamp::from_seconds(deadline),
             )
@@ -66,7 +89,7 @@ pub contract LedgerHarness {
                 slot: BALANCE_SLOT,
             )
         }
-        Settle { id, data_hash, now, quorum } -> bool
+        Settle { id, data_hash, now, quorum, timelock, grace } -> bool
         uses (mut ledger)
         {
             let _ = ballot::settle(
@@ -74,6 +97,8 @@ pub contract LedgerHarness {
                 data_hash,
                 now: Timestamp::from_seconds(now),
                 quorum_bps: quorum,
+                timelock: seconds(timelock),
+                grace: seconds(grace),
             )
             true
         }
@@ -81,8 +106,86 @@ pub contract LedgerHarness {
             let p = ballot::get(id)
             (p.votes_for, p.votes_against)
         }
+        // What `Propose` checks once the header is anchored, with the same
+        // function, against USDC's storage at the mainnet block.
+        Admit { supply, proposer, proof, threshold } -> bool {
+            let snapshot = Snapshot {
+                block: mainnet_usdc::BLOCK_NUMBER,
+                storage_root: StorageRoot { value: mainnet_usdc::STORAGE_ROOT },
+                supply,
+            }
+            admit(
+                snapshot,
+                proposer,
+                proof,
+                kind: LAYOUT,
+                slot: BALANCE_SLOT,
+                threshold_bps: threshold,
+            )
+            true
+        }
+        // `Execute`'s call, through the same function.
+        Pay { target, gas, data } -> bool uses (mut call) {
+            pay(target, Wei::zero(), data, gas)
+            true
+        }
     }
 }
+
+/// Records the gas it was called with.
+msg SinkMsg {
+    #[selector = 0x10]
+    Record,
+    #[selector = 0x11]
+    Seen -> u256,
+}
+
+pub contract GasSink uses (ctx: Ctx) {
+    mut seen: u256,
+
+    recv SinkMsg {
+        Record uses (ctx, mut seen) {
+            seen = ctx.gas()
+        }
+        Seen -> u256 uses (seen) {
+            seen
+        }
+    }
+}
+
+/// Deploys a Plebiscite, so its constructor's checks can be watched.
+msg FactoryMsg {
+    #[selector = 0x20]
+    Make { quorum: u256, max_age: u256, threshold: u256, grace: u256 } -> Address,
+}
+
+pub contract PlebisciteFactory uses (create: mut Create) {
+    recv FactoryMsg {
+        Make { quorum, max_age, threshold, grace } -> Address
+        uses (mut create)
+        {
+            create
+                .create2<Plebiscite>(
+                    value: Wei::zero(),
+                    args: (
+                        Address::new(0xbeef),
+                        0,
+                        0,
+                        1,
+                        seconds(3600),
+                        quorum,
+                        max_age,
+                        threshold,
+                        seconds(300),
+                        seconds(grace),
+                    ),
+                    salt: 0,
+                )
+        }
+    }
+}
+
+// --- helpers ---------------------------------------------------------------------------
 
 fn deploy() -> Address uses (evm: mut Evm) {
     evm.create2<LedgerHarness>(value: Wei::zero(), args: (), salt: 0)
@@ -108,16 +211,114 @@ uses (evm: mut Evm)
     )
 }
 
-fn settle(_ h: Address, id: u256, data_hash: u256, now: u256, quorum: u256) -> bool
+fn try_cast(_ h: Address, id: u256, voter: u256, weight: u256, now: u256) -> CallOutcome
 uses (evm: mut Evm)
 {
-    evm.call(
+    evm.try_call(
         addr: h,
         gas: 1000000,
         value: Wei::zero(),
-        message: HarnessMsg::Settle { id, data_hash, now, quorum },
+        message: HarnessMsg::Cast { id, voter: Address::new(voter), weight, support: true, now },
     )
 }
+
+// Settles with no timelock and a grace period that never ends.
+fn settle(_ h: Address, id: u256, data_hash: u256, now: u256, quorum: u256) -> CallOutcome
+uses (evm: mut Evm)
+{
+    settle_at(h, id, data_hash, now, quorum, timelock: 0, grace: MAX)
+}
+
+fn settle_at(
+    _ h: Address,
+    id: u256,
+    data_hash: u256,
+    now: u256,
+    quorum: u256,
+    timelock: u256,
+    grace: u256,
+) -> CallOutcome
+uses (evm: mut Evm)
+{
+    evm.try_call(
+        addr: h,
+        gas: 1000000,
+        value: Wei::zero(),
+        message: HarnessMsg::Settle { id, data_hash, now, quorum, timelock, grace },
+    )
+}
+
+fn weight(_ h: Address, id: u256, holder: u256, proof: own Bytes) -> CallOutcome
+uses (evm: mut Evm)
+{
+    evm.try_call(
+        addr: h,
+        gas: 1000000,
+        value: Wei::zero(),
+        message: HarnessMsg::Weight { id, holder: Address::new(holder), proof },
+    )
+}
+
+fn admit_as(
+    _ h: Address,
+    proposer: u256,
+    proof: own Bytes,
+    supply: u256,
+    threshold: u256,
+) -> CallOutcome
+uses (evm: mut Evm)
+{
+    evm.try_call(
+        addr: h,
+        gas: 1000000,
+        value: Wei::zero(),
+        message: HarnessMsg::Admit { supply, proposer: Address::new(proposer), proof, threshold },
+    )
+}
+
+fn make(
+    _ factory: Address,
+    quorum: u256,
+    max_age: u256,
+    threshold: u256,
+    grace: u256,
+) -> CallOutcome
+uses (evm: mut Evm)
+{
+    evm.try_call(
+        addr: factory,
+        gas: 10000000,
+        value: Wei::zero(),
+        message: FactoryMsg::Make { quorum, max_age, threshold, grace },
+    )
+}
+
+fn dead_proof() -> Bytes {
+    decode_hex(mainnet_usdc::slot1_packed()).unwrap()
+}
+
+fn flagged_proof() -> Bytes {
+    decode_hex(mainnet_usdc::slot0_packed()).unwrap()
+}
+
+/// The call succeeded.
+fn ok(_ outcome: CallOutcome) -> bool {
+    outcome.success()
+}
+
+/// The call reverted with exactly `Refused { reason }`.
+fn refused(_ outcome: CallOutcome, _ reason: u8) -> bool {
+    let data = outcome.returndata()
+    !outcome.success() && is_error<Refused>(data) && data.read_word(4) == reason as u256
+}
+
+/// The call reverted with exactly `InvalidProof { reason }`.
+fn rejected(_ outcome: CallOutcome, _ reason: u8) -> bool {
+    let data = outcome.returndata()
+    !outcome.success() && is_error<InvalidProof>(data) && data.read_word(4) == reason as u256
+}
+
+// --- votes -------------------------------------------------------------------------------
 
 #[test]
 fn proposals_are_numbered_from_one() uses (evm: mut Evm) {
@@ -144,33 +345,69 @@ fn votes_are_tallied_per_side() uses (evm: mut Evm) {
     assert!(no == 150)
 }
 
-#[test(should_revert)]
+#[test]
 fn a_holder_votes_once() uses (evm: mut Evm) {
     let h = deploy()
     let id = open(h, deadline: 100)
     cast(h, id, voter: 1, weight: 10, support: true, now: 10)
-    cast(h, id, voter: 1, weight: 10, support: false, now: 11)
+    assert!(
+        refused(
+            try_cast(h, id, voter: 1, weight: 10, now: 11),
+            ballot::ALREADY_VOTED,
+        ),
+    )
 }
 
-#[test(should_revert)]
+#[test]
 fn no_votes_after_the_deadline() uses (evm: mut Evm) {
     let h = deploy()
     let id = open(h, deadline: 100)
-    cast(h, id, voter: 1, weight: 10, support: true, now: 100)
+    assert!(
+        refused(
+            try_cast(h, id, voter: 1, weight: 10, now: 100),
+            ballot::VOTING_CLOSED,
+        ),
+    )
 }
 
-#[test(should_revert)]
+#[test]
 fn zero_weight_cannot_vote() uses (evm: mut Evm) {
     let h = deploy()
     let id = open(h, deadline: 100)
-    cast(h, id, voter: 1, weight: 0, support: true, now: 10)
+    assert!(
+        refused(
+            try_cast(h, id, voter: 1, weight: 0, now: 10),
+            ballot::NO_WEIGHT,
+        ),
+    )
 }
 
-#[test(should_revert)]
+#[test]
 fn unknown_proposal() uses (evm: mut Evm) {
     let h = deploy()
-    cast(h, id: 1, voter: 1, weight: 10, support: true, now: 10)
+    assert!(
+        refused(
+            try_cast(h, id: 1, voter: 1, weight: 10, now: 10),
+            ballot::UNKNOWN_PROPOSAL,
+        ),
+    )
 }
+
+#[test]
+fn a_weight_above_the_supply_is_refused() uses (evm: mut Evm) {
+    let h = deploy()
+    let id = open(h, deadline: 100)
+    // The snapshot supply is 1000: all of it may vote, not more.
+    assert!(
+        refused(
+            try_cast(h, id, voter: 1, weight: 1001, now: 10),
+            ballot::WEIGHT_ABOVE_SUPPLY,
+        ),
+    )
+    assert!(ok(try_cast(h, id, voter: 2, weight: 1000, now: 10)))
+}
+
+// --- settling ---------------------------------------------------------------------------
 
 #[test]
 fn passed_proposal_settles_once() uses (evm: mut Evm) {
@@ -179,102 +416,525 @@ fn passed_proposal_settles_once() uses (evm: mut Evm) {
     cast(h, id, voter: 1, weight: 600, support: true, now: 10)
     cast(h, id, voter: 2, weight: 100, support: false, now: 10)
     // 600 for out of a supply of 1000 meets a 40% quorum.
-    assert!(settle(h, id, data_hash: 7, now: 100, quorum: 4000))
+    assert!(ok(settle(h, id, data_hash: 7, now: 100, quorum: 4000)))
+    assert!(
+        refused(
+            settle(h, id, data_hash: 7, now: 101, quorum: 4000),
+            ballot::ALREADY_EXECUTED,
+        ),
+    )
 }
 
-#[test(should_revert)]
-fn settles_only_once() uses (evm: mut Evm) {
-    let h = deploy()
-    let id = open(h, deadline: 100)
-    cast(h, id, voter: 1, weight: 600, support: true, now: 10)
-    let _ = settle(h, id, data_hash: 7, now: 100, quorum: 4000)
-    let _ = settle(h, id, data_hash: 7, now: 101, quorum: 4000)
-}
-
-#[test(should_revert)]
+#[test]
 fn cannot_settle_while_voting() uses (evm: mut Evm) {
     let h = deploy()
     let id = open(h, deadline: 100)
     cast(h, id, voter: 1, weight: 600, support: true, now: 10)
-    let _ = settle(h, id, data_hash: 7, now: 99, quorum: 4000)
+    assert!(
+        refused(
+            settle(h, id, data_hash: 7, now: 99, quorum: 4000),
+            ballot::VOTING_OPEN,
+        ),
+    )
 }
 
-#[test(should_revert)]
+#[test]
 fn quorum_is_enforced() uses (evm: mut Evm) {
     let h = deploy()
     let id = open(h, deadline: 100)
-    cast(h, id, voter: 1, weight: 300, support: true, now: 10)
-    // 300 of 1000 is below a 40% quorum.
-    let _ = settle(h, id, data_hash: 7, now: 100, quorum: 4000)
+    cast(h, id, voter: 1, weight: 399, support: true, now: 10)
+    // 399 of 1000 is below a 40% quorum; 400 would meet it.
+    assert!(
+        refused(
+            settle(h, id, data_hash: 7, now: 100, quorum: 4000),
+            ballot::NOT_PASSED,
+        ),
+    )
+    cast(h, id, voter: 2, weight: 1, support: true, now: 10)
+    assert!(ok(settle(h, id, data_hash: 7, now: 100, quorum: 4000)))
 }
 
-#[test(should_revert)]
+#[test]
 fn more_against_than_for_fails() uses (evm: mut Evm) {
     let h = deploy()
     let id = open(h, deadline: 100)
     cast(h, id, voter: 1, weight: 500, support: true, now: 10)
     cast(h, id, voter: 2, weight: 500, support: false, now: 10)
-    let _ = settle(h, id, data_hash: 7, now: 100, quorum: 1000)
+    assert!(
+        refused(
+            settle(h, id, data_hash: 7, now: 100, quorum: 1000),
+            ballot::NOT_PASSED,
+        ),
+    )
 }
 
-#[test(should_revert)]
+#[test]
 fn executes_only_the_proposed_calldata() uses (evm: mut Evm) {
     let h = deploy()
     let id = open(h, deadline: 100)
     cast(h, id, voter: 1, weight: 600, support: true, now: 10)
-    let _ = settle(h, id, data_hash: 8, now: 100, quorum: 4000)
+    assert!(
+        refused(
+            settle(h, id, data_hash: 8, now: 100, quorum: 4000),
+            ballot::WRONG_CALLDATA,
+        ),
+    )
 }
+
+#[test]
+fn execution_waits_for_the_timelock() uses (evm: mut Evm) {
+    let h = deploy()
+    let id = open(h, deadline: 100)
+    cast(h, id, voter: 1, weight: 600, support: true, now: 10)
+    // Voting closes at 100; with a 50-second timelock execution opens at 150.
+    let locked = settle_at(
+        h,
+        id,
+        data_hash: 7,
+        now: 100,
+        quorum: 4000,
+        timelock: 50,
+        grace: 1000,
+    )
+    assert!(refused(locked, ballot::TIMELOCKED))
+    let still = settle_at(
+        h,
+        id,
+        data_hash: 7,
+        now: 149,
+        quorum: 4000,
+        timelock: 50,
+        grace: 1000,
+    )
+    assert!(refused(still, ballot::TIMELOCKED))
+    assert!(
+        ok(
+            settle_at(
+                h,
+                id,
+                data_hash: 7,
+                now: 150,
+                quorum: 4000,
+                timelock: 50,
+                grace: 1000,
+            ),
+        ),
+    )
+}
+
+#[test]
+fn execution_expires_after_the_grace_period() uses (evm: mut Evm) {
+    let h = deploy()
+    let id = open(h, deadline: 100)
+    cast(h, id, voter: 1, weight: 600, support: true, now: 10)
+    // Open from 150 until 150 + 1000.
+    let late = settle_at(
+        h,
+        id,
+        data_hash: 7,
+        now: 1150,
+        quorum: 4000,
+        timelock: 50,
+        grace: 1000,
+    )
+    assert!(refused(late, ballot::EXPIRED))
+    assert!(
+        ok(
+            settle_at(
+                h,
+                id,
+                data_hash: 7,
+                now: 1149,
+                quorum: 4000,
+                timelock: 50,
+                grace: 1000,
+            ),
+        ),
+    )
+}
+
+#[test]
+fn timing_cannot_overflow() uses (evm: mut Evm) {
+    let h = deploy()
+    let id = open(h, deadline: 100)
+    cast(h, id, voter: 1, weight: 600, support: true, now: 10)
+    // A timelock and grace near 2^256 must give a verdict, not a panic.
+    assert!(
+        refused(
+            settle_at(
+                h,
+                id,
+                data_hash: 7,
+                now: MAX,
+                quorum: 4000,
+                timelock: MAX,
+                grace: MAX,
+            ),
+            ballot::TIMELOCKED,
+        ),
+    )
+    assert!(
+        ok(
+            settle_at(
+                h,
+                id,
+                data_hash: 7,
+                now: MAX,
+                quorum: 4000,
+                timelock: 0,
+                grace: MAX,
+            ),
+        ),
+    )
+}
+
+// --- quorum arithmetic ------------------------------------------------------------------
+
+#[test]
+fn shares_round_up_and_never_overflow() {
+    assert!(ballot::share(supply: 1000, bps: 4000) == 400)
+    assert!(ballot::share(supply: 1001, bps: 4000) == 401)
+    assert!(ballot::share(supply: 0, bps: 4000) == 0)
+    assert!(ballot::share(supply: 1000, bps: 0) == 0)
+    assert!(ballot::share(supply: MAX, bps: 10000) == MAX)
+    // ceil((2^256 - 1) / 10000)
+    assert!(ballot::share(supply: MAX, bps: 1) == MAX / 10000 + 1)
+    assert!(
+        ballot::share(supply: MAX, bps: 4000)
+            == 0x6666666666666666666666666666666666666666666666666666666666666666,
+    )
+}
+
+fn proposal(supply: u256, votes_for: u256, votes_against: u256) -> Proposal {
+    Proposal {
+        proposer: Address::zero(),
+        target: Address::zero(),
+        value: Wei::zero(),
+        data_hash: 0,
+        gas: 0,
+        snapshot_block: 1,
+        storage_root: 0,
+        supply,
+        deadline: Timestamp::from_seconds(10),
+        votes_for,
+        votes_against,
+        executed: false,
+    }
+}
+
+#[test]
+fn quorum_of_a_huge_supply_does_not_overflow() {
+    let now = Timestamp::from_seconds(20)
+    // The review's case: supply * quorum_bps used to exceed 2^256 and revert.
+    let half = 0x8000000000000000000000000000000000000000000000000000000000000000
+    let p = proposal(
+        supply: half,
+        votes_for: 0x7000000000000000000000000000000000000000000000000000000000000000,
+        votes_against: 0,
+    )
+    assert!(ballot::passed(p, now, quorum_bps: 2))
+    // All of the largest supply must vote for a 100% quorum, and one short is not enough.
+    assert!(
+        ballot::passed(
+            proposal(supply: MAX, votes_for: MAX, votes_against: 0),
+            now,
+            quorum_bps: 10000,
+        ),
+    )
+    assert!(
+        !ballot::passed(
+            proposal(supply: MAX, votes_for: MAX - 1, votes_against: 0),
+            now,
+            quorum_bps: 10000,
+        ),
+    )
+}
+
+// --- weights from proofs -----------------------------------------------------------------
 
 #[test]
 fn weight_is_the_proven_usdc_balance() uses (evm: mut Evm) {
     let h = deploy()
     let id = open(h, deadline: 100)
-    // 0x...dEaD held 57,575.181148 USDC at the snapshot block.
-    let weight: u256 = evm
+    let w: u256 = evm
         .call(
             addr: h,
             gas: 1000000,
             value: Wei::zero(),
-            message: HarnessMsg::Weight {
-                id,
-                holder: Address::new(0x000000000000000000000000000000000000dEaD),
-                proof: decode_hex(mainnet_usdc::slot1_packed()).unwrap(),
-            },
+            message: HarnessMsg::Weight { id, holder: Address::new(DEAD), proof: dead_proof() },
         )
-    assert!(weight == mainnet_usdc::SLOT1_VALUE)
+    assert!(w == mainnet_usdc::SLOT1_VALUE)
+    assert!(w == DEAD_BALANCE)
 }
 
-#[test(should_revert)]
+#[test]
 fn blacklisted_holder_has_no_vote() uses (evm: mut Evm) {
     let h = deploy()
     let id = open(h, deadline: 100)
-    let _: u256 = evm
-        .call(
-            addr: h,
-            gas: 1000000,
-            value: Wei::zero(),
-            message: HarnessMsg::Weight {
-                id,
-                holder: Address::new(0x28c6c06298d514db089934071355e5743bf21d60),
-                proof: decode_hex(mainnet_usdc::slot0_packed()).unwrap(),
-            },
-        )
+    assert!(
+        refused(
+            weight(h, id, holder: FLAGGED, proof: flagged_proof()),
+            ballot::FLAGGED_HOLDER,
+        ),
+    )
 }
 
-#[test(should_revert)]
+#[test]
 fn a_proof_for_someone_else_is_no_weight() uses (evm: mut Evm) {
     let h = deploy()
     let id = open(h, deadline: 100)
-    // The dEaD proof, claimed for another holder.
-    let _: u256 = evm
+    // The dEaD proof, claimed for another holder: it leads to another slot.
+    assert!(
+        rejected(weight(h, id, holder: 0x1234, proof: dead_proof()), 2),
+    )
+}
+
+// --- who may propose ------------------------------------------------------------------------
+
+#[test]
+fn a_zero_supply_cannot_be_voted_on() uses (evm: mut Evm) {
+    let h = deploy()
+    assert!(
+        refused(
+            admit_as(
+                h,
+                proposer: DEAD,
+                proof: dead_proof(),
+                supply: 0,
+                threshold: 0,
+            ),
+            ballot::NO_SUPPLY,
+        ),
+    )
+}
+
+#[test]
+fn the_proposer_needs_the_threshold() uses (evm: mut Evm) {
+    let h = deploy()
+    // dEaD holds exactly 1% of a supply of 100 times its balance.
+    let supply = DEAD_BALANCE * 100
+    assert!(
+        ok(
+            admit_as(
+                h,
+                proposer: DEAD,
+                proof: dead_proof(),
+                supply,
+                threshold: 100,
+            ),
+        ),
+    )
+    assert!(
+        refused(
+            admit_as(
+                h,
+                proposer: DEAD,
+                proof: dead_proof(),
+                supply,
+                threshold: 101,
+            ),
+            ballot::BELOW_THRESHOLD,
+        ),
+    )
+    // One unit more supply and 1% rounds up past the balance.
+    assert!(
+        refused(
+            admit_as(
+                h,
+                proposer: DEAD,
+                proof: dead_proof(),
+                supply: supply + 1,
+                threshold: 100,
+            ),
+            ballot::BELOW_THRESHOLD,
+        ),
+    )
+    // A threshold of 0 admits any holder.
+    assert!(
+        ok(
+            admit_as(
+                h,
+                proposer: DEAD,
+                proof: dead_proof(),
+                supply,
+                threshold: 0,
+            ),
+        ),
+    )
+}
+
+#[test]
+fn the_proposer_proves_their_own_balance() uses (evm: mut Evm) {
+    let h = deploy()
+    let supply = DEAD_BALANCE * 100
+    // dEaD's proof sent by someone else proves nothing about them.
+    assert!(
+        rejected(
+            admit_as(
+                h,
+                proposer: 0x1234,
+                proof: dead_proof(),
+                supply,
+                threshold: 0,
+            ),
+            2,
+        ),
+    )
+    // A holder the token flags cannot propose, whatever the threshold.
+    assert!(
+        refused(
+            admit_as(
+                h,
+                proposer: FLAGGED,
+                proof: flagged_proof(),
+                supply,
+                threshold: 0,
+            ),
+            ballot::FLAGGED_HOLDER,
+        ),
+    )
+}
+
+// --- the call -----------------------------------------------------------------------------
+
+fn record_call() -> Bytes {
+    decode_hex("00000010").unwrap()
+}
+
+fn pay_through(_ h: Address, sink: Address, gas: u256, outer: u256) -> CallOutcome
+uses (evm: mut Evm)
+{
+    evm.try_call(
+        addr: h,
+        gas: outer,
+        value: Wei::zero(),
+        message: HarnessMsg::Pay { target: sink, gas, data: record_call() },
+    )
+}
+
+#[test]
+fn the_call_gets_exactly_its_gas() uses (evm: mut Evm) {
+    let h = deploy()
+    let sink = evm.create2<GasSink>(value: Wei::zero(), args: (), salt: 0)
+    // Plenty of gas left, but the call is given 50,000 and no more.
+    assert!(ok(pay_through(h, sink, gas: 50000, outer: 5000000)))
+    let seen: u256 = evm
         .call(
-            addr: h,
-            gas: 1000000,
+            addr: sink,
+            gas: 100000,
             value: Wei::zero(),
-            message: HarnessMsg::Weight {
-                id,
-                holder: Address::new(0x1234),
-                proof: decode_hex(mainnet_usdc::slot1_packed()).unwrap(),
-            },
+            message: SinkMsg::Seen {},
         )
+    assert!(seen <= 50000 && seen > 49000)
+}
+
+#[test]
+fn a_call_without_enough_gas_is_refused() uses (evm: mut Evm) {
+    let h = deploy()
+    let sink = evm.create2<GasSink>(value: Wei::zero(), args: (), salt: 0)
+    // 63/64 of what is left cannot cover 500,000 and the reserve: no call is made.
+    assert!(
+        refused(
+            pay_through(h, sink, gas: 500000, outer: 400000),
+            ballot::INSUFFICIENT_GAS,
+        ),
+    )
+    let seen: u256 = evm
+        .call(
+            addr: sink,
+            gas: 100000,
+            value: Wei::zero(),
+            message: SinkMsg::Seen {},
+        )
+    assert!(seen == 0)
+}
+
+#[test]
+fn a_failed_call_is_refused() uses (evm: mut Evm) {
+    let h = deploy()
+    // The harness itself rejects an unknown selector, so the call reverts.
+    assert!(
+        refused(
+            pay_through(h, sink: h, gas: 50000, outer: 5000000),
+            ballot::CALL_FAILED,
+        ),
+    )
+}
+
+// --- configuration ------------------------------------------------------------------------
+
+#[test]
+fn a_config_out_of_range_is_refused() uses (evm: mut Evm) {
+    let f = evm.create2<PlebisciteFactory>(value: Wei::zero(), args: (), salt: 0)
+    assert!(
+        ok(
+            make(
+                f,
+                quorum: 4000,
+                max_age: 16,
+                threshold: 100,
+                grace: 604800,
+            ),
+        ),
+    )
+    assert!(
+        refused(
+            make(f, quorum: 0, max_age: 16, threshold: 100, grace: 604800),
+            ballot::BAD_CONFIG,
+        ),
+    )
+    assert!(
+        refused(
+            make(
+                f,
+                quorum: 10001,
+                max_age: 16,
+                threshold: 100,
+                grace: 604800,
+            ),
+            ballot::BAD_CONFIG,
+        ),
+    )
+    assert!(
+        refused(
+            make(
+                f,
+                quorum: 4000,
+                max_age: 0,
+                threshold: 100,
+                grace: 604800,
+            ),
+            ballot::BAD_CONFIG,
+        ),
+    )
+    assert!(
+        refused(
+            make(
+                f,
+                quorum: 4000,
+                max_age: 65,
+                threshold: 100,
+                grace: 604800,
+            ),
+            ballot::BAD_CONFIG,
+        ),
+    )
+    assert!(
+        refused(
+            make(
+                f,
+                quorum: 4000,
+                max_age: 16,
+                threshold: 10001,
+                grace: 604800,
+            ),
+            ballot::BAD_CONFIG,
+        ),
+    )
+    assert!(
+        refused(
+            make(f, quorum: 4000, max_age: 16, threshold: 100, grace: 0),
+            ballot::BAD_CONFIG,
+        ),
+    )
 }

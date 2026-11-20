@@ -1,8 +1,8 @@
-//! A plain ERC-20 for local runs and tests. It knows nothing about
-//! governance: no checkpoints, no delegation, no snapshot hooks. Its storage
-//! is laid out as a Solidity token's would be (balances mapping at slot 0,
-//! total supply at slot 1), so a Plebiscite reads it with
-//! `BalanceLayout::Solidity(0)` and supply slot 1.
+//! A minimal ERC-20 for local runs, tests and the Sepolia demo. It knows
+//! nothing about governance: no checkpoints, no delegation, no snapshot
+//! hooks. Its storage is laid out as a Solidity token's would be (balances
+//! mapping at slot 0, total supply at slot 1), so a Plebiscite reads it with
+//! `BalanceLayout::Solidity(0)` and supply slot 1. Only the deployer mints.
 
 use std::evm::StorageMap
 
@@ -11,25 +11,44 @@ pub msg TokenMsg {
     BalanceOf { owner: Address } -> u256,
     #[selector = sol("totalSupply()")]
     TotalSupply -> u256,
+    #[selector = sol("allowance(address,address)")]
+    Allowance { owner: Address, spender: Address } -> u256,
     #[selector = sol("transfer(address,uint256)")]
     Transfer { to: Address, amount: u256 } -> bool,
+    #[selector = sol("approve(address,uint256)")]
+    Approve { spender: Address, amount: u256 } -> bool,
+    #[selector = sol("transferFrom(address,address,uint256)")]
+    TransferFrom { from: Address, to: Address, amount: u256 } -> bool,
     #[selector = sol("mint(address,uint256)")]
     Mint { to: Address, amount: u256 } -> bool,
 }
 
+/// ERC-20's `Transfer(address indexed from, address indexed to, uint256 value)`;
+/// a mint is a transfer from the zero address.
 #[event]
-pub struct Transferred {
+pub struct Transfer {
     #[indexed]
     pub from: Address,
     #[indexed]
     pub to: Address,
-    pub amount: u256,
+    pub value: u256,
+}
+
+/// ERC-20's `Approval(address indexed owner, address indexed spender, uint256 value)`.
+#[event]
+pub struct Approval {
+    #[indexed]
+    pub owner: Address,
+    #[indexed]
+    pub spender: Address,
+    pub value: u256,
 }
 
 pub contract DemoToken uses (ctx: Ctx, log: mut Log) {
     mut balances: StorageMap<Address, u256>,
     mut supply: u256,
     minter: Address,
+    mut allowances: StorageMap<Address, StorageMap<Address, u256>>,
 
     init() uses (ctx, mut minter) { minter = ctx.caller() }
 
@@ -42,22 +61,53 @@ pub contract DemoToken uses (ctx: Ctx, log: mut Log) {
             supply
         }
 
+        Allowance { owner, spender } -> u256 uses (allowances) {
+            allowances[owner][spender]
+        }
+
         Transfer { to, amount } -> bool uses (ctx, mut balances, mut log) {
-            let from = ctx.caller()
-            let have = balances.get(key: from)
-            assert!(have >= amount, "insufficient balance")
-            balances.set(key: from, value: have - amount)
-            balances.set(key: to, value: balances.get(key: to) + amount)
-            log.emit(Transferred { from, to, amount })
+            move_tokens(from: ctx.caller(), to, amount)
+            true
+        }
+
+        Approve { spender, amount } -> bool uses (ctx, mut allowances, mut log) {
+            let owner = ctx.caller()
+            allowances[owner][spender] = amount
+            log.emit(Approval { owner, spender, value: amount })
+            true
+        }
+
+        TransferFrom { from, to, amount } -> bool
+        uses (ctx, mut balances, mut allowances, mut log)
+        {
+            let spender = ctx.caller()
+            let allowed = allowances[from][spender]
+            assert!(allowed >= amount, "insufficient allowance")
+            // An allowance of 2^256 - 1 is unlimited, as in OpenZeppelin's ERC-20.
+            if allowed != 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff {
+                allowances[from][spender] = allowed - amount
+            }
+            move_tokens(from, to, amount)
             true
         }
 
         Mint { to, amount } -> bool uses (ctx, minter, mut balances, mut supply, mut log) {
             assert!(ctx.caller() == minter, "only the minter mints")
-            balances.set(key: to, value: balances.get(key: to) + amount)
             supply += amount
-            log.emit(Transferred { from: Address::zero(), to, amount })
+            balances.set(key: to, value: balances.get(key: to) + amount)
+            log.emit(Transfer { from: Address::zero(), to, value: amount })
             true
         }
     }
+}
+
+// Moves `amount` from `from` to `to` and logs it.
+fn move_tokens(from: Address, to: Address, amount: u256)
+uses (balances: mut StorageMap<Address, u256>, log: mut Log)
+{
+    let have = balances.get(key: from)
+    assert!(have >= amount, "insufficient balance")
+    balances.set(key: from, value: have - amount)
+    balances.set(key: to, value: balances.get(key: to) + amount)
+    log.emit(Transfer { from, to, value: amount })
 }
