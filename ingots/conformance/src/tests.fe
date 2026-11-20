@@ -4,10 +4,16 @@
 use core::text::decode_hex
 use std::abi::{Bytes, Bytes32, DynArray, DynString}
 use ferrotype::nodes::{AbiList, Packed}
-use ferrotype::slots::{BalanceLayout, solidity_mapping, address_key}
+use ferrotype::slots::{BalanceLayout, solidity_mapping, vyper_mapping, address_key}
 use ferrotype::state::{self, Account, StateRoot, StorageRoot}
 use ferrotype::trie::{ProofError, EMPTY_TRIE_ROOT}
-use ingot::{mainnet_absent_account, mainnet_eoa_empty_storage, mainnet_usdc, mainnet_weth}
+use ingot::{
+    mainnet_absent_account,
+    mainnet_crv,
+    mainnet_eoa_empty_storage,
+    mainnet_usdc,
+    mainnet_weth,
+}
 
 // --- library helpers ---------------------------------------------------------
 
@@ -198,6 +204,57 @@ fn usdc_second_slot() {
             slot: mainnet_usdc::SLOT1,
         ),
         mainnet_usdc::SLOT1_VALUE,
+    )
+}
+
+// CRV is written in Vyper, which hashes a mapping slot as keccak(slot . key),
+// the other way round from Solidity's keccak(key . slot).
+
+#[test]
+fn crv_header_and_account() {
+    let buf = decode_hex(mainnet_crv::header()).unwrap()
+    let header = state::header(buf.span(), at: 0, len: buf.len()).unwrap()
+    assert!(header.hash.value == mainnet_crv::BLOCK_HASH)
+    assert!(header.state_root.value == mainnet_crv::STATE_ROOT)
+    let account = expect_account(
+        prove_account(
+            mainnet_crv::account_packed(),
+            root: mainnet_crv::STATE_ROOT,
+            address: mainnet_crv::ACCOUNT,
+        ),
+        storage_root: mainnet_crv::STORAGE_ROOT,
+    )
+    assert!(account.nonce == mainnet_crv::NONCE)
+}
+
+#[test]
+fn crv_balance_is_read_with_the_vyper_layout() {
+    expect_value(
+        prove_slot(
+            mainnet_crv::slot0_packed(),
+            root: mainnet_crv::STORAGE_ROOT,
+            slot: mainnet_crv::SLOT0,
+        ),
+        mainnet_crv::SLOT0_VALUE,
+    )
+    // balanceOf(0xF977…aceC) returned this at the same block.
+    assert!(mainnet_crv::SLOT0_VALUE == 50594985519548498304338096)
+    let layout = BalanceLayout::Vyper(3)
+    let balance = layout.balance(mainnet_crv::SLOT0_VALUE)
+    assert!(!balance.flagged)
+    assert!(balance.amount == 50594985519548498304338096)
+}
+
+#[test]
+fn crv_balance_slot_is_derived_from_the_holder() {
+    let holder = Address::new(0xf977814e90da44bfa03b6295a0616a897441acec)
+    assert!(BalanceLayout::Vyper(3).slot(holder) == mainnet_crv::SLOT0)
+    assert!(
+        vyper_mapping(slot: 3, key: address_key(holder)) == mainnet_crv::SLOT0,
+    )
+    // The same index under Solidity's rule names a different slot.
+    assert!(
+        solidity_mapping(slot: 3, key: address_key(holder)) != mainnet_crv::SLOT0,
     )
 }
 

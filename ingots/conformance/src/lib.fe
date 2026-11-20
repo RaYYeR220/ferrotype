@@ -4,6 +4,7 @@ pub use mainnet_usdc
 pub use mainnet_weth
 pub use mainnet_absent_account
 pub use mainnet_eoa_empty_storage
+pub use mainnet_crv
 pub use tests
 pub use contract_tests
 pub use vector

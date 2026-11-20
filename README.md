@@ -108,9 +108,9 @@ More Fe that carries weight here:
 
 | Target | Command | Result |
 |---|---|---|
-| EVM | `fe test ingots/conformance` | <!-- n:evm_tests -->371<!-- /n --> passed |
-| Native | `fe test --backend native ingots/conformance` | <!-- n:native_tests -->354<!-- /n --> passed (the contract tests are EVM-only; the million-round fuzz test is native-only) |
-| WebAssembly | `node wasm/check.mjs` | <!-- n:wasm_checks -->363<!-- /n --> checks passed (the vectors, the mainnet reads, and the traced reads) |
+| EVM | `fe test ingots/conformance` | <!-- n:evm_tests -->374<!-- /n --> passed |
+| Native | `fe test --backend native ingots/conformance` | <!-- n:native_tests -->357<!-- /n --> passed (the contract tests are EVM-only; the million-round fuzz test is native-only) |
+| WebAssembly | `node wasm/check.mjs` | <!-- n:wasm_checks -->369<!-- /n --> checks passed (the vectors, the mainnet reads, and the traced reads) |
 
 **Damaged proofs.** [`fuzz.fe`](ingots/conformance/src/fuzz.fe) damages the mainnet proofs at random (bit flips, overwritten bytes, cut tails, removed ranges, appended bytes, one 32-byte window copied over another) and verifies them. Of <!-- n:fuzz_rounds -->1,000,000<!-- /n --> damaged proofs, <!-- n:fuzz_true -->679<!-- /n --> still prove the true value (the damage missed every byte that matters), <!-- n:fuzz_rejected -->999,321<!-- /n --> are rejected, and <!-- n:fuzz_wrong -->0<!-- /n --> prove a wrong value; the verifier never panics. The EVM and native builds reach the same verdict on every one of the first 300 rounds: both fold their verdicts into the same digest (`every_target_reaches_the_same_300_verdicts`). Run it with `fe build --backend native ingots/fuzz --out-dir target/fuzz && target/fuzz/fuzz 1000000 1`.
 
@@ -214,11 +214,11 @@ The governance flow end to end, on a local chain (`scripts/e2e.sh`): deploy a pl
 
 - Fe 26 is not production-ready, and neither is this code: it is unaudited. Use it on testnets.
 - A proposal must be opened within 256 blocks of its snapshot block (configurable up to 8,191 through EIP-2935). Fetching a proof for an older block needs an archive node, and free public nodes keep very little: in November 2026 publicnode answers `eth_getProof` on Sepolia only for the newest block and Tenderly's gateway for about the last hundred. A voter therefore votes soon after a proposal opens, or uses an archive node.
-- `Plebiscite` reads balances from a token's own storage, so it needs the token's layout: Solidity and Vyper mappings and USDC-style flag bits are built in. Rebasing tokens (stETH shares), balances behind proxies with custom layouts, delegation and vote by signature are not supported.
+- `Plebiscite` reads balances from a token's own storage, so it needs the token's layout: Solidity and Vyper mappings and USDC-style flag bits are built in (tested on mainnet USDC and on CRV, a Vyper token). Rebasing tokens (stETH shares), balances behind proxies with custom layouts, delegation and vote by signature are not supported.
 - A proposal makes one call. Voters vote from the address that held the tokens; a smart-wallet holder votes through its wallet.
 - The native CLI needs x86-64 Linux or AArch64 macOS (Fe's native targets) and `curl`. Its JSON reader does not decode string escapes; JSON-RPC answers do not use them.
 - The WebAssembly module needs a compiler built with the `wasm` feature, and the bundling step above.
-- Gas varies with trie depth; the numbers above are for the five real proofs in `fixtures/mainnet`.
+- Gas varies with trie depth; the numbers above are for the five reads in the benchmark, taken from four of the proofs in `fixtures/mainnet`.
 
 ## Declaration
 

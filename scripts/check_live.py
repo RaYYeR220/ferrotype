@@ -96,7 +96,7 @@ dep = json.loads((ROOT / "deployments" / "sepolia.json").read_text())
 snaps = json.loads((ROOT / "deployments" / "sepolia-snapshots.json").read_text())
 reader = dep["contracts"]["StateReader"]
 print(f"Sepolia, via {' or '.join(RPCS)}\n\nStateReader {reader} on saved mainnet proofs")
-for name in ("usdc", "weth", "absent-account", "eoa-empty-storage"):
+for name in ("usdc", "weth", "crv", "absent-account", "eoa-empty-storage"):
     f = json.loads((ROOT / "fixtures" / "mainnet" / f"{name}.json").read_text())
     p, root = f["proof"], f["block"]["stateRoot"]
     sp = p["storageProof"][0]
