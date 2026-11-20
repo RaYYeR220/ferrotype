@@ -4,7 +4,7 @@
 
 **Live:** [ferrotype.vercel.app](https://ferrotype.vercel.app) · **Try it:** [ferrotype.vercel.app/try](https://ferrotype.vercel.app/try) checks one read three ways, in your browser as WebAssembly, in the contract on Sepolia and with the native CLI, and lets you damage the proof · contracts on Sepolia: [below](#live-on-sepolia).
 
-**Pitch:** Ferrotype lets a contract read any other contract's storage at a past block, trustlessly, for <!-- n:fe_gas -->178,284<!-- /n --> gas — <!-- n:vs_lido -->48%<!-- /n --> less than Lido's audited verifier and <!-- n:vs_op -->65%<!-- /n --> less than Optimism's — with one Fe codebase that runs on-chain, in a native CLI and in the browser.
+**Pitch:** Ferrotype lets a contract read any other contract's storage at a past block, proven from nothing but a block hash it trusts, for <!-- n:fe_gas -->178,338<!-- /n --> gas — <!-- n:vs_lido -->48%<!-- /n --> less than Lido's audited verifier and <!-- n:vs_op -->65%<!-- /n --> less than Optimism's — with one Fe codebase that runs on-chain, in a native CLI and in the browser.
 
 A DAO wants USDC holders to vote on its treasury. USDC has no checkpoints and never will: no one upgrades a $75B token for one DAO. Today the answer is an off-chain snapshot server that everyone has to trust. With Ferrotype the DAO reads each voter's balance straight out of USDC's storage at the proposal's block, proven against the block hash the chain itself remembers. The token cooperates without knowing it.
 
@@ -26,11 +26,11 @@ One library, written once in Fe, compiled three ways:
 | Native | `ferrotype`, a CLI that talks to an Ethereum node, proves every value before printing it, and prints the calldata the contracts accept | `fe build --backend native` |
 | WebAssembly | the verifier in the browser: a page checks a proof before a wallet ever sees it | `fe build --backend wasm` |
 
-The verifier ([`trie.fe`](ingots/ferrotype/src/trie.fe), [`rlp.fe`](ingots/ferrotype/src/rlp.fe)) walks a proof in place. All nodes live in one buffer; every node and every embedded child is a range of it. Nothing is copied, no item list is allocated, and a branch node is decoded in a single pass with fast paths for the two headers almost every child has (a 32-byte hash, or empty). It proves presence and absence (an empty branch slot, or a leaf or extension whose path diverges), follows embedded nodes, and rejects everything else with a reason: `Malformed`, `HashMismatch`, `MissingNode`, `ExtraNodes`, `BadReference`. Only canonical RLP is accepted.
+The verifier ([`trie.fe`](ingots/ferrotype/src/trie.fe), [`rlp.fe`](ingots/ferrotype/src/rlp.fe)) walks a proof in place. All nodes live in one buffer; every node and every embedded child is a range of it. Nothing is copied, no item list is allocated, and a branch node is decoded in a single pass with fast paths for the two headers almost every child has (a 32-byte hash, or empty). It proves presence and absence (an empty branch slot, or a leaf or extension whose path diverges), follows embedded nodes, and rejects everything else with a reason: `Malformed`, `HashMismatch`, `MissingNode`, `ExtraNodes`, `BadReference`. Only canonical RLP is accepted, and an account's nonce and balance and a slot's value must be canonical integers, with no leading zero byte.
 
 On top of it, [`state.fe`](ingots/ferrotype/src/state.fe) decodes block headers of every fork (one decoder: every fork keeps the first fifteen fields) and proves accounts and slots, and [`slots.fe`](ingots/ferrotype/src/slots.fe) knows where Solidity and Vyper put mappings and how tokens pack balances, including USDC's blacklist bit.
 
-[`Plebiscite`](ingots/contracts/src/plebiscite.fe) uses all of it. Opening a proposal anchors it to a block the chain still remembers: the header must hash to `BLOCKHASH` (or the EIP-2935 history contract), its state root proves the token's account, and the account's storage root is kept. From then on a vote needs one short storage proof, of the voter's own balance slot. Balances are counted at the snapshot block, so tokens moved after it vote nowhere twice; a holder the token flags (USDC's blacklist) cannot vote; quorum is a share of the total supply proven at the same block.
+[`Plebiscite`](ingots/contracts/src/plebiscite.fe) uses all of it. Opening a proposal anchors it to a fresh block: the header must be at most `max_snapshot_age` blocks old (16 in the deployments) and hash to what `BLOCKHASH` returns for it, its state root proves the token's account, and the account's storage root is kept. The proposer proves their own balance at that block, which must reach the proposal threshold (1% of the supply for the demo DAO; 0 lets any holder propose). From then on a vote needs one short storage proof, of the voter's own balance slot. Balances are counted at the snapshot block, so tokens moved after it vote nowhere twice; a holder the token flags (USDC's blacklist) can neither vote nor propose; quorum is a share of the total supply proven at the same block, a supply of zero is refused, and so is a vote heavier than the supply. A proposal that passed is executed by anyone after a timelock and before a grace period ends, and its call is made with exactly the gas the proposal named: `execute` refuses to start it with less.
 
 Everything here was written during the contest (see [Declaration](#declaration)).
 
@@ -52,15 +52,16 @@ pub fn keccak(_ data: MemSpan) -> u256 {
 }
 ```
 
-The capabilities of every handler are in its signature, checked by the compiler: a handler that does not list an effect or a storage field cannot reach it. In `Plebiscite` only `Propose` and `Execute` list `call`, and each hands it to one free function whose own `uses` clause states the mode: `history::block_hash` takes `call: Call`, which allows nothing but `STATICCALL` (to read old block hashes from the EIP-2935 contract), and `pay`, the treasury's only outgoing call, takes `call: mut Call`:
+The capabilities of every handler are in its signature, checked by the compiler: a handler that does not list an effect or a storage field cannot reach it. In `Plebiscite` only `Execute` lists `call`, and it hands it to one free function, `pay`, the treasury's only outgoing call, whose own `uses` clause takes it mutably. `Propose` checks its header with `BLOCKHASH`, a read of the block context, and lists no `call` at all:
 
 ```fe
-Propose { header, token_proof, supply_proof, target, value, data } -> u256
-    uses (ctx, call, token, supply_slot, voting_period, max_snapshot_age, mut ledger, mut log)
+Propose { header, token_proof, supply_proof, proposer_proof, target, value, gas, data } -> u256
+    uses (ctx, token, layout_kind, balance_slot, supply_slot, voting_period, max_snapshot_age,
+          proposal_threshold_bps, mut ledger, mut log)
 Vote { id, support, balance_proof } -> u256 uses (ctx, layout_kind, balance_slot, mut ledger, mut log)
-Execute { id, data } -> bool uses (ctx, mut call, quorum_bps, mut ledger, mut log)
+Execute { id, data } -> bool uses (ctx, mut call, quorum_bps, timelock, grace, mut ledger, mut log)
 
-fn pay(_ target: Address, _ value: Wei, _ data: Bytes) -> bool uses (ctx: Ctx, call: mut Call)
+pub fn pay(_ target: Address, _ value: Wei, _ data: Bytes, gas: u256) uses (call: mut Call)
 ```
 
 Calling `pay` from `Vote` is a compile error (`missing effect Call required by pay`). Checking this claim turned up a gap: Fe 26.6 does not check the `mut` marker of a contract-level effect inside a `recv` arm, so an arm that lists `call` without `mut` can still call it mutably. Ferrotype's arms therefore never call `call` themselves; the finding is reported upstream with a minimal reproduction ([argotorg/fe#2047](https://github.com/argotorg/fe/issues/2047)).
@@ -76,7 +77,7 @@ pub fn storage<N: Nodes>(_ buf: MemSpan, nodes: mut N, root: StorageRoot, slot: 
 More Fe that carries weight here:
 - The CLI encodes calldata from the contracts' own `msg` types (`<M as MsgVariant<Sol>>::SELECTOR` and the std ABI encoder), so its output cannot drift from what the contracts decode.
 - Its network access is a capability too: `rpc::call` `uses (proc: mut Spawn)` and runs `curl`; nothing that does not declare `Spawn` can reach the network.
-- `Wei` and `Timestamp` keep amounts and deadlines apart in the ballot; the compiler checks every `sol(...)` selector against its fields' ABI types.
+- `Wei`, `Timestamp` and `Duration` keep amounts, deadlines and the timelock apart in the ballot, and the execution window is measured from the deadline (`now - deadline`), so no sum of durations can overflow; the compiler checks every `sol(...)` selector against its fields' ABI types.
 
 ## Architecture
 
@@ -93,26 +94,26 @@ More Fe that carries weight here:
                    |                         |                      |
         ingots/contracts (EVM)      ingots/cli (native)       wasm/exports.fe (wasm)
         StateReader                 ferrotype read/balance/    read_storage, read_header,
-        Plebiscite = history.fe     propose/vote/verify        lookup, balance_slot
+        Plebiscite (BLOCKHASH)      propose/vote/verify        lookup, balance_slot
           + ballot.fe (ledger)      json.fe, rpc.fe (curl),    + web/src/ferrotype.js host
           + weight from proofs      chain.fe (headers)
 ```
 
-- `ingots/conformance` holds the tests: real mainnet proofs, 335 generated vectors, the contracts, and the ballot rules.
+- `ingots/conformance` holds the tests: real mainnet proofs, <!-- n:vectors -->343<!-- /n --> generated vectors, hostile inputs found in review, the contracts, and the ballot rules.
 - `bench/` measures gas against the audited Solidity verifiers on the same proofs (Foundry).
 - `scripts/` fetch fixtures, generate vectors and tests, bundle the wasm module, render this README's numbers, and run the end-to-end flow.
 
 ## Results
 
-**Correctness, on three runtimes.** The same 335 generated proof vectors (from the reference implementation `@ethereumjs/trie`: presence, embedded nodes, all three shapes of absence, 140 invalid proofs each with its expected reason) and the mainnet fixtures pass on every target:
+**Correctness, on three runtimes.** The same <!-- n:vectors -->343<!-- /n --> generated proof vectors (from the reference implementation `@ethereumjs/trie`: presence, embedded nodes, all three shapes of absence, <!-- n:invalid_vectors -->148<!-- /n --> invalid proofs each with its expected reason, among them RLP lengths written in more bytes than a 32-bit integer holds and stored integers with a leading zero) and the mainnet fixtures pass on every target:
 
 | Target | Command | Result |
 |---|---|---|
-| EVM | `fe test ingots/conformance` | <!-- n:evm_tests -->374<!-- /n --> passed |
-| Native | `fe test --backend native ingots/conformance` | <!-- n:native_tests -->357<!-- /n --> passed (the contract tests are EVM-only; the million-round fuzz test is native-only) |
-| WebAssembly | `node wasm/check.mjs` | <!-- n:wasm_checks -->369<!-- /n --> checks passed (the vectors, the mainnet reads, and the traced reads) |
+| EVM | `fe test ingots/conformance` | <!-- n:evm_tests -->402<!-- /n --> passed |
+| Native | `fe test --backend native ingots/conformance` | <!-- n:native_tests -->373<!-- /n --> passed (the contract tests are EVM-only; the million-round fuzz test is native-only) |
+| WebAssembly | `node wasm/check.mjs` | <!-- n:wasm_checks -->377<!-- /n --> checks passed (the vectors, the mainnet reads, and the traced reads) |
 
-**Damaged proofs.** [`fuzz.fe`](ingots/conformance/src/fuzz.fe) damages the mainnet proofs at random (bit flips, overwritten bytes, cut tails, removed ranges, appended bytes, one 32-byte window copied over another) and verifies them. Of <!-- n:fuzz_rounds -->1,000,000<!-- /n --> damaged proofs, <!-- n:fuzz_true -->679<!-- /n --> still prove the true value (the damage missed every byte that matters), <!-- n:fuzz_rejected -->999,321<!-- /n --> are rejected, and <!-- n:fuzz_wrong -->0<!-- /n --> prove a wrong value; the verifier never panics. The EVM and native builds reach the same verdict on every one of the first 300 rounds: both fold their verdicts into the same digest (`every_target_reaches_the_same_300_verdicts`). Run it with `fe build --backend native ingots/fuzz --out-dir target/fuzz && target/fuzz/fuzz 1000000 1`.
+**Damaged proofs.** [`fuzz.fe`](ingots/conformance/src/fuzz.fe) damages the mainnet proofs at random (bit flips, overwritten bytes, cut tails, removed ranges, appended bytes, one 32-byte window copied over another) and verifies them. Of <!-- n:fuzz_rounds -->1,000,000<!-- /n --> damaged proofs, <!-- n:fuzz_true -->679<!-- /n --> still prove the true value (in <!-- n:fuzz_unchanged -->679<!-- /n --> of those rounds the damage left the bytes as they were, a byte overwritten with itself or a window copied over identical bytes; the fuzzer compares them), <!-- n:fuzz_rejected -->999,321<!-- /n --> are rejected, and <!-- n:fuzz_wrong -->0<!-- /n --> prove a wrong value; the verifier never panics. The EVM and native builds reach the same verdict on every one of the first 300 rounds: both fold their verdicts into the same digest (`every_target_reaches_the_same_300_verdicts`). Run it with `fe build --backend native ingots/fuzz --out-dir target/fuzz && target/fuzz/fuzz 1000000 1`.
 
 **Gas.** Execution gas for one read (account proof, then storage proof), on the same real mainnet proofs, measured with Foundry ([`bench/`](bench/README.md)). "unsupported" means the verifier reverts on that valid proof: it cannot prove that case.
 
@@ -123,13 +124,13 @@ More Fe that carries weight here:
 | Lido `StateProofVerifier` (audited, solc 0.6.12) | 344,979 | 330,229 | 314,531 | 158,196 | 200,937 |
 | Lido `StateProofVerifier`, solc 0.8 port | 572,921 | 551,087 | 523,474 | 263,697 | 340,520 |
 | Curve `curve-xdao` (patched, 2025, solc 0.8.18) | 597,272 | 573,940 | 546,255 | 275,932 | 353,841 |
-| **Ferrotype**, `bytes[]` proofs | 178,284 | 167,782 | 166,212 | 87,104 | 97,872 |
-| **Ferrotype**, packed proofs | 180,143 | 169,889 | 167,935 | 88,183 | 99,093 |
+| **Ferrotype**, `bytes[]` proofs | 178,338 | 167,836 | 166,243 | 87,125 | 97,814 |
+| **Ferrotype**, packed proofs | 180,173 | 169,919 | 167,945 | 88,183 | 99,014 |
 <!-- gas:end -->
 
-Absence proofs cost <!-- n:vs_lido_absent -->47%<!-- /n --> less than Lido's. Among the verifiers that reject a proof that stops early, Ferrotype costs <!-- n:vs_curve -->70%<!-- /n --> less than Curve's patched one and <!-- n:vs_op -->65%<!-- /n --> less than Optimism's, which cannot prove absence at all. Counting calldata, a full read transaction costs <!-- n:fe_tx -->314,935<!-- /n --> gas with packed proofs against <!-- n:lido_tx -->485,611<!-- /n --> for Lido's.
+Absence proofs cost <!-- n:vs_lido_absent -->47%<!-- /n --> less than Lido's. Among the verifiers that reject a proof that stops early, Ferrotype costs <!-- n:vs_curve -->70%<!-- /n --> less than Curve's patched one and <!-- n:vs_op -->65%<!-- /n --> less than Optimism's, which cannot prove absence at all. Counting calldata, a full read transaction costs <!-- n:fe_tx -->314,965<!-- /n --> gas with packed proofs against <!-- n:lido_tx -->485,611<!-- /n --> for Lido's.
 
-**Soundness.** Of the three verifiers, Ferrotype is the only one that proves absence and rejects a proof whose node list stops early (`bench/results/soundness.json`). The benchmark reproduces this publicly disclosed bug class on real proofs, with Curve's patched verifier as a control. The reference `@ethereumjs/trie` `verifyProof` accepts 12 of the 20 structurally malformed vectors and ignores unused nodes; Ferrotype rejects all of them with the expected reason.
+**Soundness.** Lido's verifier accepts a proof whose node list stops early after a branch node and reads the slot as zero. Ferrotype and Curve's patched copy reject it, and Ferrotype costs <!-- n:vs_curve -->70%<!-- /n --> less; Optimism's rejects it too, but cannot prove absence at all (`bench/results/soundness.json`). The benchmark reproduces this publicly disclosed bug class on real proofs. The reference `@ethereumjs/trie` `verifyProof` accepts <!-- n:ejs_malformed_accepted -->17<!-- /n --> of the <!-- n:ejs_malformed -->28<!-- /n --> malformed vectors (<!-- n:ejs_values_accepted -->5<!-- /n --> of them because it does not decode stored values) and ignores unused nodes; Ferrotype rejects all of them with the expected reason.
 
 **Which abstractions are free.** Measured on the USDC read:
 
@@ -173,7 +174,7 @@ The contracts are deployed on Sepolia and the governance flow has run there end 
 |---|---|---|
 | `StateReader` | [`0xc0a2c66ca8931dbe493fbd8e76526f3cd4f83497`](https://sepolia.etherscan.io/address/0xc0a2c66ca8931dbe493fbd8e76526f3cd4f83497) | verifies a storage proof against a state root (`storageAt`, `storageAtPacked`) |
 | `PlebisciteDemo` | [`0xa19e7b96ecdd159c99e18f9dc0c336a35743c5ba`](https://sepolia.etherscan.io/address/0xa19e7b96ecdd159c99e18f9dc0c336a35743c5ba) | governance and treasury for `DemoToken`, 30-minute votes |
-| `DemoToken` | [`0x5cf120f737f3737dbab70cccb4cd18a56f3ad9ec`](https://sepolia.etherscan.io/address/0x5cf120f737f3737dbab70cccb4cd18a56f3ad9ec) | a plain ERC-20 written in Fe (balances at slot 0, supply at slot 1) |
+| `DemoToken` | [`0x5cf120f737f3737dbab70cccb4cd18a56f3ad9ec`](https://sepolia.etherscan.io/address/0x5cf120f737f3737dbab70cccb4cd18a56f3ad9ec) | a minimal ERC-20 written in Fe (balances at slot 0, supply at slot 1) |
 | `PlebisciteUSDC` | [`0xb8c210afe1a331b9f7cac2b83bbb284969437f9a`](https://sepolia.etherscan.io/address/0xb8c210afe1a331b9f7cac2b83bbb284969437f9a) | governance for Sepolia USDC (balances with a flag bit at slot 9, supply at slot 11) |
 
 The governance run on Sepolia, transaction by transaction:
@@ -197,6 +198,7 @@ Read a slot of any contract, proven, from any node:
 $ ferrotype balance --rpc https://ethereum-rpc.publicnode.com \
     --token 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 \
     --holder 0x28C6c06298d514Db089934071355E5743bf21d60 --layout flagged --slot 9
+trust    the block hash came from the node; pass --block-hash to check it against one you trust
 block    26445692 0xb0c139281db951cb15bc6c84249f586b247676a27b19bc528509f67364941d72 (header hash checked)
 state    0x7bc0190f96d5575bf230781cbeaf1ba351456c97c19a9d3e2cecd3e63d5dac9f
 token    0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48
@@ -206,16 +208,19 @@ balance  52363119552
 flagged  yes: the token marks this holder (for USDC, blacklisted)
 ```
 
+Every node and every value is checked, but the block hash everything is proven against still comes from the node. The proof is trustless only against a block hash you trust: pass one with `--block-hash` (from your own node, a light client, or two providers that agree) and the header must hash to it, or the CLI refuses. The contracts need no such step: they take the hash from `BLOCKHASH`.
+
 Check a saved proof with no network: `ferrotype verify fixtures/mainnet/usdc.json`.
 
-The governance flow end to end, on a local chain (`scripts/e2e.sh`): deploy a plain ERC-20 and a Plebiscite, open a proposal anchored to a real block hash, move tokens after the snapshot, vote with storage proofs built by the CLI (the tally counts snapshot balances: 700 for, 300 against), see a second vote, a borrowed proof and a second execution refused, and execute the treasury payment.
+The governance flow end to end, on a local chain (`scripts/e2e.sh`): deploy a minimal ERC-20 and a Plebiscite, see a proposer below the threshold and a header older than the maximum snapshot age refused, open a proposal anchored to a fresh block hash, move tokens after the snapshot, vote with storage proofs built by the CLI (the tally counts snapshot balances: 700 for, 300 against), see a second vote, a borrowed proof, an execution during the timelock and a second execution refused, execute the treasury payment, and spend an allowance with `transferFrom`.
 
 ## Limitations
 
 - Fe 26 is not production-ready, and neither is this code: it is unaudited. Use it on testnets.
-- A proposal must be opened within 256 blocks of its snapshot block (configurable up to 8,191 through EIP-2935). Fetching a proof for an older block needs an archive node, and free public nodes keep very little: in November 2026 publicnode answers `eth_getProof` on Sepolia only for the newest block and Tenderly's gateway for about the last hundred. A voter therefore votes soon after a proposal opens, or uses an archive node.
+- A proposal must be opened within `max_snapshot_age` blocks of its snapshot block: 16 in the deployments (about three minutes), at most 64. A proposer who could pick any block in a long window could pick one at which borrowed or briefly held tokens weigh the most; a fresh snapshot leaves little to pick from, and it is checked with `BLOCKHASH` alone. Fetching a proof for an older block needs an archive node, and free public nodes keep very little: in November 2026 publicnode answers `eth_getProof` on Sepolia only for the newest block and Tenderly's gateway for about the last hundred. A voter therefore votes soon after a proposal opens, or uses an archive node.
+- The token's flag (USDC's blacklist) is read at the snapshot block only: a holder flagged after it still votes with its snapshot balance, and one unflagged after it still cannot.
 - `Plebiscite` reads balances from a token's own storage, so it needs the token's layout: Solidity and Vyper mappings and USDC-style flag bits are built in (tested on mainnet USDC and on CRV, a Vyper token). Rebasing tokens (stETH shares), balances behind proxies with custom layouts, delegation and vote by signature are not supported.
-- A proposal makes one call. Voters vote from the address that held the tokens; a smart-wallet holder votes through its wallet.
+- A proposal makes one call, with the gas it names. Voters vote from the address that held the tokens; a smart-wallet holder votes through its wallet.
 - The native CLI needs x86-64 Linux or AArch64 macOS (Fe's native targets) and `curl`. Its JSON reader does not decode string escapes; JSON-RPC answers do not use them.
 - The WebAssembly module needs a compiler built with the `wasm` feature, and the bundling step above.
 - Gas varies with trie depth; the numbers above are for the five reads in the benchmark, taken from four of the proofs in `fixtures/mainnet`.

@@ -108,6 +108,7 @@ figures = {
     "fuzz_true": f"{tests['fuzz_true_value']:,}",
     "fuzz_rejected": f"{tests['fuzz_rejected']:,}",
     "fuzz_wrong": f"{tests['fuzz_wrong_value']:,}",
+    "fuzz_unchanged": f"{tests['fuzz_unchanged']:,}",
     "vectors": f"{vectors:,}",
     "same_rounds": same.group(1),
     "unsafe": str(unsafe),
@@ -137,7 +138,7 @@ contracts = dep["contracts"]
 CONTRACT_NAMES = [
     ("StateReader", "StateReader", "reads any slot, given a state root"),
     ("PlebisciteDemo", "Plebiscite · DemoToken", "one proposal, three voters"),
-    ("DemoToken", "DemoToken", "a plain ERC-20"),
+    ("DemoToken", "DemoToken", "a minimal ERC-20"),
     ("PlebisciteUSDC", "Plebiscite · USDC", "Sepolia USDC, with its flag bit"),
 ]
 
@@ -194,7 +195,7 @@ def tx_list():
                 f'        <li><a href="{ETHERSCAN}/tx/{h}"><span class="tx-h">{h[:10]}…</span></a><span>{html.escape(caption(name))}</span></li>'
             )
     if "execute" not in txs:
-        items.append('        <li class="tx-wait"><span class="tx-h">execute</span><span>Not sent yet. Anyone can send it once the vote has closed and the proposal passed.</span></li>')
+        items.append('        <li class="tx-wait"><span class="tx-h">execute</span><span>Not sent yet. Anyone can send it once the vote has closed, the proposal passed and its timelock is over.</span></li>')
     return "\n      <ol class=\"txs\">\n" + "\n".join(items) + "\n      </ol>\n      "
 
 

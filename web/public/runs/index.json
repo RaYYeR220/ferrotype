@@ -1,6 +1,6 @@
 {
  "fe": "fe 26.6.0 (5b3f96a)",
- "cli_sha256": "923baad02cae5791e7ce55e7d2a46a66b990e04567debe779261f407c6b15292",
+ "cli_sha256": "19dd7f871d05afecb492f4362f3368d179028107a2379d3b7c48af8403fbbd7f",
  "runs": [
   {
    "fixture": "usdc",
