@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/RaYYeR220/ferrotype/actions/workflows/ci.yml/badge.svg)](https://github.com/RaYYeR220/ferrotype/actions/workflows/ci.yml)
 
-**Live:** [ferrotype.vercel.app](https://ferrotype.vercel.app) · **Try it:** [ferrotype.vercel.app/try](https://ferrotype.vercel.app/try) checks one read three ways, in your browser as WebAssembly, in the contract on Sepolia and with the native CLI, and lets you damage the proof · contracts on Sepolia: [below](#live-on-sepolia).
+**Live:** [ferrotype.vercel.app](https://ferrotype.vercel.app) · **Video:** [the demo in 2:40](https://youtu.be/1mOroCLm2z8) · **Try it:** [ferrotype.vercel.app/try](https://ferrotype.vercel.app/try) checks one read three ways, in your browser as WebAssembly, in the contract on Sepolia and with the native CLI, and lets you damage the proof · contracts on Sepolia: [below](#live-on-sepolia).
 
 **Pitch:** Ferrotype lets a contract read any other contract's storage at a past block, proven from nothing but a block hash it trusts, for <!-- n:fe_gas -->178,338<!-- /n --> gas — <!-- n:vs_lido -->48%<!-- /n --> less than Lido's audited verifier and <!-- n:vs_op -->65%<!-- /n --> less than Optimism's — with one Fe codebase that runs on-chain, in a native CLI and in the browser.
 
@@ -166,6 +166,8 @@ The WebAssembly backend is a Cargo feature that the Fe release binaries do not i
 ## Demo
 
 ### Live on Sepolia
+
+A 2:40 walkthrough of everything below: [https://youtu.be/1mOroCLm2z8](https://youtu.be/1mOroCLm2z8).
 
 The contracts are deployed on Sepolia and the governance flow has run there end to end. Every address and transaction below is rendered from [`deployments/sepolia.json`](deployments/sepolia.json), written by `scripts/deploy.sh`.
 
